@@ -1,16 +1,13 @@
 {
   "name": "colosseum",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Web-search-grounded adversarial debate between multiple AI agents. Agents fact-check each other with live searches, reaching consensus or forcing synthesis after 5 rounds.",
   "author": {
     "name": "Jinho Choi",
-    "url": "https://github.com/nirna"
+    "url": "https://github.com/JinHo-von-Choi"
   },
-  "homepage": "https://github.com/nirna/colosseum",
-  "repository": "https://github.com/nirna/colosseum",
+  "homepage": "https://github.com/JinHo-von-Choi/colosseum",
+  "repository": "https://github.com/JinHo-von-Choi/colosseum",
   "license": "MIT",
-  "keywords": ["multi-ai", "adversarial-debate", "fact-checking", "synthesis", "web-search", "critical-thinking"],
-  "skills": [
-    "skills/colosseum"
-  ]
+  "keywords": ["multi-ai", "adversarial-debate", "fact-checking", "synthesis", "web-search", "critical-thinking"]
 }
