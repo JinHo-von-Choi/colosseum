@@ -48,13 +48,13 @@ Supported CLIs:
 Via Claude Code plugin system:
 
 ```bash
-/plugin install nirna/colosseum
+/plugin install colosseum@claude-plugins-official
 ```
 
 Manual:
 
 ```bash
-git clone https://github.com/nirna/colosseum
+git clone https://github.com/JinHo-von-Choi/colosseum
 cd colosseum && ./install.sh
 ```
 
