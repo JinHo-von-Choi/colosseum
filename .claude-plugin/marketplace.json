@@ -1,0 +1,21 @@
+{
+  "name": "colosseum",
+  "owner": {
+    "name": "Jinho Choi",
+    "url": "https://github.com/JinHo-von-Choi"
+  },
+  "metadata": {
+    "description": "Adversarial multi-agent debate skill grounded in live web searches."
+  },
+  "plugins": [
+    {
+      "name": "colosseum",
+      "source": "./",
+      "description": "Web-search-grounded adversarial debate between independent AI agents.",
+      "version": "2.1.0",
+      "author": {
+        "name": "Jinho Choi"
+      }
+    }
+  ]
+}

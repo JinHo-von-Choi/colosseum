@@ -1,7 +1,7 @@
 {
   "name": "colosseum",
-  "version": "1.0.1",
-  "description": "Web-search-grounded adversarial debate between multiple AI agents. Agents fact-check each other with live searches, reaching consensus or forcing synthesis after 5 rounds.",
+  "version": "2.1.0",
+  "description": "Web-search-grounded adversarial debate between independent AI agents. Blind drafts, live fact-checking, concessions on proof, and a scored verdict within 5 rounds.",
   "author": {
     "name": "Jinho Choi",
     "url": "https://github.com/JinHo-von-Choi"
