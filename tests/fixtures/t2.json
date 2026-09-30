@@ -1,0 +1,50 @@
+{
+ "evidence": [
+  {
+   "id": "E1",
+   "reliability": "high",
+   "support": "full",
+   "quote_status": "v"
+  },
+  {
+   "id": "E2",
+   "reliability": "high",
+   "support": "full",
+   "quote_status": "v"
+  }
+ ],
+ "claims": [
+  {
+   "id": "A",
+   "evidence": [
+    "E1"
+   ]
+  },
+  {
+   "id": "B",
+   "evidence": [
+    "E2"
+   ]
+  }
+ ],
+ "relations": [
+  {
+   "type": "attack",
+   "subtype": "rebut",
+   "from": "A",
+   "to": "B"
+  },
+  {
+   "type": "attack",
+   "subtype": "rebut",
+   "from": "B",
+   "to": "A"
+  }
+ ],
+ "conflicts": [
+  {
+   "a": "A",
+   "b": "B"
+  }
+ ]
+}

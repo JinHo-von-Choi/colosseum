@@ -41,12 +41,30 @@ Participants see each other only as anonymous labels (A, B, C, reshuffled every 
 
 The report always includes the blind-draft positions, `BASELINE_VOTE`, `P0`, the per-round quote verification counts, the strongest case for the opposing position, conditional answers for unresolved issues, `P_final` (marked `UNCALIBRATED`), a source list, and an evidence-quality checklist (verification rate, source quality, independent origins per decisive claim). There is no single weighted score.
 
+## Architecture
+
+The protocol text tells the Moderator what to do; code decides what is allowed and computes the results.
+
+| Part | Path | Role |
+|------|------|------|
+| Launcher skill | `skills/colosseum/SKILL.md` | Core rules and the phase-by-phase command table (about 100 lines) |
+| References | `skills/colosseum/references/` | Full protocol and prompts, JSON formats, report format |
+| Run controller | `skills/colosseum/scripts/colosseum.py` | Phase state machine (illegal transitions and extra rounds are refused), budgets, snippet-mode switch |
+| Computation | `baseline.py`, `quote_match.py`, `verdict_engine.py`, `metrics.py` | Vote and pooled probability, quote classification, argument-graph verdicts, evidence checklist |
+| Participant agent | `agents/participant.md` | `colosseum:participant`: web tools only, no messaging or sub-agents, JSON turn format |
+| Hooks | `hooks/hooks.json` | Search and fetch budgets, fetch block in snippet mode, messaging block during blind drafts, source ledger, one-shot repair of malformed turns |
+
+The verdict engine turns the debate into an argument graph. Each claim gets a base score from its evidence (source reliability, quote check, support, freshness), combined by noisy-OR across independent origins, so syndicated copies count once. Attacks become defeats unless the target is clearly stronger; an undercut defeats unconditionally only when it carries checked evidence. Grounded semantics then labels every claim accepted, rejected or undecided, preferred extensions give the branches of a conditional answer, and damped DF-QuAD strengths give the confidence. The same input always yields the same verdict and the same input hash.
+
+Every hook is a no-op unless the current session has a running Colosseum run. Without Python or Bash the skill falls back to a manual mode that follows the same protocol and says so in the report.
+
 ## Requirements
 
 - A web search tool, either of:
   - Claude Code's built-in `WebSearch`
   - [Brave Search MCP](https://github.com/brave/brave-search-mcp-server) (`brave_web_search`)
 - `WebFetch` for quote verification (optional; without it the run is labeled snippet-level)
+- Python 3.9 or later for the scripts (optional; without it the skill runs in manual mode)
 - Optional AI CLIs for a heterogeneous roster:
 
 | CLI | Install | Invocation used |
@@ -72,7 +90,7 @@ Via the official plugin directory:
 /plugin install colosseum@claude-plugins-official
 ```
 
-Manual (symlinks the skill into `~/.claude/skills`):
+Manual (symlinks the skill directory into `~/.claude/skills`; hooks and the participant agent need the plugin install):
 
 ```bash
 git clone https://github.com/JinHo-von-Choi/colosseum
@@ -103,6 +121,14 @@ colosseum: Is TypeScript worth adopting for a mid-size team?
 ```
 
 Simple lookups, summaries, translations and coding tasks are intentionally out of scope and should not trigger the skill.
+
+## Tests
+
+```bash
+python3 -m unittest discover -s tests
+```
+
+The unit tests cover the verdict engine (including regression tests for evidence-free undercuts, uncollapsed syndicated copies, non-monotonic scores and credited unverified quotes), 20 labeled quote-matching samples, the vote and pooling rules, the checklist, turn validation, the phase state machine and the hooks.
 
 ## Evaluation
 

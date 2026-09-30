@@ -1,0 +1,99 @@
+{
+ "question": "toy",
+ "evidence": [
+  {
+   "id": "E1",
+   "reliability": "high",
+   "support": "full",
+   "quote_status": "v",
+   "origin": "journalX"
+  },
+  {
+   "id": "E2",
+   "reliability": "medium",
+   "support": "partial",
+   "quote_status": "v",
+   "origin": "newsY"
+  },
+  {
+   "id": "E3",
+   "reliability": "high",
+   "support": "full",
+   "quote_status": "v",
+   "origin": "agencyZ"
+  },
+  {
+   "id": "E4",
+   "reliability": "low",
+   "support": "partial",
+   "quote_status": "u",
+   "origin": "blogW"
+  }
+ ],
+ "claims": [
+  {
+   "id": "A1",
+   "author": "A",
+   "evidence": [
+    "E1"
+   ]
+  },
+  {
+   "id": "B1",
+   "author": "B",
+   "evidence": [
+    "E2"
+   ]
+  },
+  {
+   "id": "C1",
+   "author": "C",
+   "evidence": [
+    "E3"
+   ]
+  },
+  {
+   "id": "A2",
+   "author": "A",
+   "evidence": [
+    "E4"
+   ]
+  }
+ ],
+ "relations": [
+  {
+   "id": "R1",
+   "type": "attack",
+   "subtype": "rebut",
+   "from": "A1",
+   "to": "B1"
+  },
+  {
+   "id": "R2",
+   "type": "attack",
+   "subtype": "rebut",
+   "from": "B1",
+   "to": "A1"
+  },
+  {
+   "id": "R3",
+   "type": "attack",
+   "subtype": "undercut",
+   "from": "C1",
+   "to": "A1"
+  },
+  {
+   "id": "R4",
+   "type": "attack",
+   "subtype": "undermine",
+   "from": "A2",
+   "to": "C1"
+  }
+ ],
+ "conflicts": [
+  {
+   "a": "A1",
+   "b": "B1"
+  }
+ ]
+}
