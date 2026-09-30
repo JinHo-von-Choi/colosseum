@@ -1,80 +1,53 @@
 # Colosseum
 
-> Web-search-grounded adversarial debate between independent AI agents.
+> Web-search-grounded adversarial review: independent blind drafts set a vote baseline, and only evidence with verified verbatim quotes can move the verdict.
 
-Colosseum is a Claude Code skill that puts a question in front of several independent agents. They draft positions blind, attack each other's factual claims with live web searches, concede when proven wrong, and converge on an answer. If they cannot agree within 5 rounds, Claude issues a forced, conditional verdict. The final answer is decided by argument quality and evidence, never by majority vote.
+Colosseum is a Claude Code skill for contested questions. Three independent agents, ideally from different model families, draft answers without seeing each other. Before any debate, Claude records a family-weighted vote and a pooled probability as the baseline. A short evidence round (1 by default, 3 at most) then attacks the claims that decide the answer. Every factual attack must carry a URL and a verbatim quote, and quotes are checked against the fetched page. The final answer can depart from the baseline only when verified evidence, a failed rebuttal and an independent juror all point the same way.
+
+The design follows the multi-agent debate literature: at matched compute, most of the gain attributed to debate comes from voting over independent samples, while the damage comes from conformity, sycophancy and correlated errors during the exchange. Colosseum therefore maximizes independence before interaction and demands verified evidence for every change during it.
 
 ## How It Works
 
 ```
-Phase 0  Parse the question (type, stakes, debate axis, participant roster)
-Phase 1  Build a fact base with 2-3 web searches from opposing angles
-Phase 2  Blind drafts: every participant declares a position without seeing the others
-Phase 3  Adversarial loop (max 5 rounds): Prosecutor / Defender / Adverse Witness,
-         every attack backed by a live search, one role switch allowed
-Phase 4  Verdict: per-conflict rulings, Devil's Advocate challenge, FinalScore,
-         optional retrial, synthesized answer
+Phase 0   Parse the question (type, stakes, as-of date, roster, budget)
+Phase 1   Fact base: 3 searches from opposing angles, top pages fetched for quotes
+Phase 2   Blind drafts: claims with URL + verbatim quote, key assumptions, cruxes, probability
+Phase 2a  Baseline: family-weighted vote and log-odds pooled probability P0
+Phase 2b  Issue map: double cruxes, pre-committed searches, value cruxes sent to conditional answers
+Phase 3   Evidence rounds (default 1, max 3): steelman gate, quote-checked attacks, evidence-only concessions
+Phase 4   Verdict: order-swapped juror rulings, override rule, premortem, evidence-quality checklist
 ```
-
-### Roles
-
-| Role | Who | Job |
-|------|-----|-----|
-| Moderator | Claude (the session running the skill) | Runs the protocol, performs searches for CLI agents, records state, judges. Never argues a side. |
-| Participants | External AI CLIs and/or Claude subagents | 3-4 independent agents that hold and defend positions |
-| Devil's Advocate | A fresh Claude subagent | Attacks the draft final answer |
-| Extra juror | A heterogeneous model | Added for high-stakes questions |
-
-Each Claude participant runs as its own subagent with its own context, launched in parallel. Blind drafting is therefore real isolation, not one model role-playing four voices.
 
 ### Participant roster
 
-| CLIs available | Roster |
-|----------------|--------|
-| 0 | 4 Claude subagents: Pragmatist, Skeptic, Idealist, Realist |
-| 1 | That CLI + 2 Claude subagents (Skeptic, Realist) |
-| 2 or more | Up to 3 CLIs (priority gemini > llm > aichat) + 1 Claude subagent (Skeptic) |
+| CLIs available | Roster (3 participants) |
+|----------------|-------------------------|
+| 0 | 3 Claude subagents, labeled "homogeneous roster" |
+| 1 | That CLI + 2 Claude subagents |
+| 2 or more | 2 CLIs + 1 Claude subagent |
 
-A CLI that fails authentication or times out twice is dropped and replaced by a Claude subagent.
+Participants see each other only as anonymous labels (A, B, C, reshuffled every round). Model names and probabilities are never shown to peers or to the juror. Claude participants start their searches from different angles (supporting evidence, contrary evidence, primary sources), because same-family models tend to share the same mistakes.
 
-### Round flow
+### Rules that move the verdict
 
-Each round, the Moderator picks the most important open conflict and assigns roles for it:
+- Quote check: each cited quote is fetched and classified `v` (exact), `n` (near), or `u` (not found). `u` quotes count for nothing. If page fetching fails for environmental reasons, the run switches to a labeled snippet-level mode instead of stopping.
+- Concessions: a position may change only on `v`/`n` evidence or a named logical error. Anything else is logged as a `CONFORMITY_FLIP` and does not count toward convergence.
+- Steelman gate: before attacking, the Prosecutor restates the Defender's claim in at most 3 sentences. If the Defender marks it as distorted, the attack is void.
+- Stopping: a round in which no position changed on new verified evidence ends the debate.
+- Override: the final answer may differ from the vote baseline only if the minority's key quote is re-verified, the majority's rebuttal fails verification, and a juror from a different model family (or a fresh juror, flagged as same-family) independently agrees.
+- Juror: each open issue is judged twice with the two sides in swapped order. Disagreement between the two rulings is reported as "order-sensitive".
 
-- Defender: the participant whose claim is under attack
-- Prosecutor: the participant most directly opposed to that claim
-- Adverse Witness: a non-party participant who checks premises both sides share
+### Output
 
-After each round the Moderator records `CONVERGENCE` (share of conflicts resolved) and `INDEPENDENCE` (1 minus the share of cited URLs used by two or more participants), then applies these rules in order:
-
-1. All conflicts resolved or CONVERGENCE ≥ 80 → stop (consensus)
-2. Role switch unused and a trigger fires (INDEPENDENCE < 40, stalled convergence, or no successful fact-check) → swap Prosecutor and Defender, continue
-3. Two consecutive rounds with zero concessions → stop (deadlock)
-4. Round 5 finished → stop (exhausted)
-
-### Verdict and scoring
-
-```
-FinalScore = 0.45 × Accuracy + 0.35 × Evidence + 0.20 × Independence
-```
-
-- Accuracy: share of factual claims in the final answer verified by search
-- Evidence: average source reliability × claim alignment for the final answer
-- Independence: INDEPENDENCE from the last round
-
-Automatic retrial, each at most once:
-
-- Independence < 60 → one extra debate round, only if rounds remain (the 5-round cap is never exceeded)
-- Evidence < 55 → up to 3 extra verification searches by the Moderator (not a debate round)
-
-A session is capped at 25 web searches. Claims that could not be checked are marked unverified and lower Accuracy.
+The report always includes the blind-draft positions, `BASELINE_VOTE`, `P0`, the per-round quote verification counts, the strongest case for the opposing position, conditional answers for unresolved issues, `P_final` (marked `UNCALIBRATED`), a source list, and an evidence-quality checklist (verification rate, source quality, independent origins per decisive claim). There is no single weighted score.
 
 ## Requirements
 
 - A web search tool, either of:
   - Claude Code's built-in `WebSearch`
   - [Brave Search MCP](https://github.com/brave/brave-search-mcp-server) (`brave_web_search`)
-- Optional AI CLIs for true multi-model debate:
+- `WebFetch` for quote verification (optional; without it the run is labeled snippet-level)
+- Optional AI CLIs for a heterogeneous roster:
 
 | CLI | Install | Invocation used |
 |-----|---------|-----------------|
@@ -82,7 +55,7 @@ A session is capped at 25 web searches. Claims that could not be checked are mar
 | [llm](https://github.com/simonw/llm) | `pip install llm` | `llm < prompt.txt` |
 | [aichat](https://github.com/sigoden/aichat) | `cargo install aichat` | `aichat "<prompt>"` |
 
-Prompts are written to a temporary file through a quoted heredoc before being passed to a CLI, so question text is never interpreted by the shell. CLI agents cannot call search tools themselves; they list the queries they need and the Moderator runs them and returns the results unedited.
+Data disclosure: when external CLIs are used, the question and the debate prompts are sent to those CLIs' model providers. Search queries go to the configured search tool. Prompts are written to a temporary file through a quoted heredoc before being passed to a CLI, so question text is never interpreted by the shell.
 
 ## Installation
 
@@ -116,6 +89,7 @@ colosseum
 AI 토론
 비판적으로 분석
 다양한 관점
+팩트체크
 ```
 
 Examples:
@@ -125,47 +99,23 @@ colosseum: Is TypeScript worth adopting for a mid-size team?
 ```
 
 ```
-비판적으로 분석: RAG vs fine-tuning, which is better for production LLM apps?
+팩트체크 해줘: 인간은 하루 물 8잔을 꼭 마셔야 한다
 ```
 
-Purely factual questions that the Phase 1 searches settle outright (two or more agreeing sources, no contrary evidence) skip the debate and return a fact-base answer.
+Simple lookups, summaries, translations and coding tasks are intentionally out of scope and should not trigger the skill.
 
-## Output Format
+## Evaluation
 
-The skill reports in Korean. Structure:
-
-```
-=== COLOSSEUM ===
-
-Question      : [question]
-Participants  : [roster with model / perspective]
-Rounds        : N/5  |  Exit reason: [consensus / deadlock / exhausted / no debate needed]
-
-## Fact Base
-## Round Summary        (round, conflict, roles, search result, concession)
-## Conflict Verdicts    (A wins / B wins / partial / conditional)
-## Consensus
-## Unresolved (conditional answer)
-## Final Answer
-## Meta
-- Web searches        : N (initial + debate + retrial) / cap 25
-- Final CONVERGENCE / INDEPENDENCE
-- Role switch         : unused / used in round N
-- Jury                : base / extended (heterogeneous / same-model)
-- Devil's Advocate    : [point] → accepted / rejected (reason)
-- FinalScore          : N (Accuracy / Evidence / Independence)
-- Retrial             : none / independence / evidence / not possible (rounds exhausted)
-- Dropped participants
-- Conditions under which this answer could be wrong
-```
+The `evals/` suite runs with `claude plugin eval` (Claude Code v2.1.269 or later) and compares the plugin against plain Claude Code with the same tools. See [evals/README.md](evals/README.md).
 
 ## Constraints
 
-- Every factual attack must be backed by a live web search
-- No majority voting; every conflict gets a ruling or an explicit conditional answer
-- Deadlock is reported as deadlock, never disguised as consensus
+- Every factual attack must carry a live search result, a URL and a verbatim quote
+- Unverified quotes carry no weight
+- The vote baseline is always reported; overriding it requires verified evidence
+- Deadlock is reported as a conditional answer, never disguised as consensus
 - The Moderator never writes a participant's position
-- Hard cap of 5 debate rounds and 1 role switch
+- At most 3 debate rounds, 25 searches and 15 page fetches per session
 - API keys and tokens are never printed or placed in prompts
 
 ## License

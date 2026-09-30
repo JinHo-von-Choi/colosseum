@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.2.0 (2026-09-30)
+
+### Changed
+- Default roster is 3 participants. With no external CLI the roster is labeled "homogeneous", and Claude participants start their searches from different angles.
+- Participants appear only as anonymous labels, reshuffled every round. Model names, personas and probabilities are hidden from peers and from the juror.
+- CONFIDENCE is replaced by PROBABILITY, which is never shown to other participants and is no longer used to pick the Adverse Witness. The Adverse Witness is the participant whose draft differs most from both parties.
+- Majority voting is no longer forbidden. A family-weighted vote and a log-odds pooled probability (P0) are recorded before any debate as the baseline.
+- The final answer can depart from the baseline only when the minority's key quote is re-verified, the majority's rebuttal fails verification, and an independent juror agrees.
+- Debate rounds: 1 by default, 3 at most. A round with no position change on new verified evidence ends the debate.
+- The role switch is removed and replaced by a steelman gate before every attack.
+- Concessions count only when backed by verified evidence or a named logical error. Other position changes are logged as CONFORMITY_FLIP.
+- CONVERGENCE is a diagnostic only. URL-level INDEPENDENCE is replaced by origin-level diversity.
+- The juror is a non-Claude CLI when one is available, and judges each issue twice with the sides in swapped order.
+- The Devil's Advocate is replaced by a premortem that assumes the answer is wrong, followed by an underconfidence check.
+- FinalScore is replaced by an evidence-quality checklist and a separate P_final marked UNCALIBRATED.
+- CLI participants receive raw search snippets instead of moderator summaries.
+- The skill description is rewritten to name its triggers and exclude simple lookups, summaries, translation and coding.
+
+### Added
+- Verbatim quotes (50 words or fewer) on every factual claim, checked against the fetched page and classified v / n / u.
+- A labeled snippet-level mode when page fetching fails for environmental reasons.
+- Blind-draft fields KEY_ASSUMPTIONS and CRUXES, and an issue map built from double cruxes with pre-committed searches.
+- A creative-question path without an adversarial loop.
+- Output sections for the vote baseline, the strongest opposing case and the source list.
+- `evals/` suite for `claude plugin eval` with 24 cases: trigger, misconception accuracy and contested-question checks.
+
 ## 2.1.0 (2026-09-29)
 
 ### Changed
