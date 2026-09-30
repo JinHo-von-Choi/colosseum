@@ -3,6 +3,7 @@
 Runs the colosseum-lib block of workflows/debate.js under Node on the same inputs the
 Python modules see. Skipped when Node is not installed.
 """
+import glob
 import json
 import os
 import random
@@ -20,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import baseline as B  # noqa: E402
 import metrics as M  # noqa: E402
+import modes as MO  # noqa: E402
 import quote_match as Q  # noqa: E402
 import verdict_engine as V  # noqa: E402
 
@@ -123,28 +125,85 @@ class JsParity(unittest.TestCase):
                 self.assertEqual(py[key], j[key], key)
 
 
+    def test_mode_aggregation(self):
+        rng = random.Random(5)
+        ballots = [[rng.sample(["I1", "I2", "I3", "I4", "I5", "I6"], rng.randrange(1, 6)) for _ in range(rng.randrange(2, 5))]
+                   for _ in range(20)]
+        js = run_js([["borda", [b]] for b in ballots])
+        for b, j in zip(ballots, js):
+            self.assertEqual(MO.borda(b), j)
+        ests = [[{"label": "L%d" % i, "family": rng.choice("abc"), "value": round(rng.uniform(0, 1), 3)}
+                 for i in range(rng.randrange(2, 6))] for _ in range(20)]
+        js = run_js([["delphiFeedback", [e]] for e in ests] + [["familyMedian", [e]] for e in ests])
+        for e, j in zip(ests, js[:20]):
+            py = MO.delphi_feedback(e)
+            self.assertAlmostEqual(py["median"], j["median"])
+            self.assertEqual((py["above"], py["below"]), (j["above"], j["below"]))
+        for e, j in zip(ests, js[20:]):
+            self.assertAlmostEqual(MO.family_median(e), j)
+        moves = [(0.4, 0.7, False), (0.4, 0.7, True), (0.5, 0.45, False), (100, 150, False, 100)]
+        js = run_js([["limitMove", list(m)] for m in moves])
+        for m, j in zip(moves, js):
+            py = MO.limit_move(*m)
+            self.assertAlmostEqual(py["value"], j["value"])
+            self.assertEqual(py["capped"], j["capped"])
+
+    def test_ach_and_pooling(self):
+        rng = random.Random(9)
+        hs = ["H1", "H2", "H3", "H0"]
+        for _ in range(15):
+            rows = [{"id": "E%d" % i, "quote_status": rng.choice(["v", "n", "snippet", "u"]),
+                     "reliability": rng.choice(["high", "medium", "low"]),
+                     "ratings": {h: rng.choice("CIN") for h in hs}} for i in range(rng.randrange(1, 7))]
+            entries = [{"family": rng.choice("ab"), "dist": {h: round(rng.uniform(0, 1), 2) for h in hs}} for _ in range(3)]
+            j_ach, j_pool = run_js([["ach", [hs, rows]], ["logLinearPool", [entries, hs]]])
+            self.assertEqual(MO.ach(hs, rows), j_ach)
+            py_pool = MO.log_linear_pool(entries, hs)
+            for h in hs:
+                self.assertAlmostEqual(py_pool[h], j_pool[h], places=2)
+
+
+def workflow_files():
+    return sorted(glob.glob(os.path.join(ROOT, "workflows", "*.js")))
+
+
 @unittest.skipUnless(NODE, "node is not installed")
 class WorkflowSyntax(unittest.TestCase):
-    def test_script_parses(self):
-        with open(WORKFLOW, encoding="utf-8") as f:
-            body = f.read().replace("export const meta", "const meta", 1)
-        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:
-            f.write("(async function () {\n" + body + "\n})\n")
-            path = f.name
-        try:
-            r = subprocess.run([NODE, "--check", path], capture_output=True, text=True)
-            self.assertEqual(r.returncode, 0, r.stderr)
-        finally:
-            os.unlink(path)
+    def test_scripts_parse(self):
+        for path in workflow_files():
+            with open(path, encoding="utf-8") as f:
+                body = f.read().replace("export const meta", "const meta", 1)
+            with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:
+                f.write("(async function () {\n" + body + "\n})\n")
+                tmp = f.name
+            try:
+                r = subprocess.run([NODE, "--check", tmp], capture_output=True, text=True)
+                self.assertEqual(r.returncode, 0, path + r.stderr)
+            finally:
+                os.unlink(tmp)
 
+
+class WorkflowStructure(unittest.TestCase):
     def test_meta_is_pure_literal_with_matching_phases(self):
-        with open(WORKFLOW, encoding="utf-8") as f:
-            text = f.read()
-        meta = text[text.index("export const meta"):text.index("\n}\n") + 2]
-        self.assertNotIn("${", meta)
-        titles = re.findall(r"title: '([^']+)'", meta)
-        used = set(re.findall(r"phase\('([^']+)'\)", text))
-        self.assertTrue(used <= set(titles), used - set(titles))
+        for path in workflow_files():
+            with open(path, encoding="utf-8") as f:
+                text = f.read()
+            meta = text[text.index("export const meta"):text.index("\n}\n") + 2]
+            self.assertNotIn("${", meta, path)
+            self.assertIn("name: '%s'" % os.path.basename(path)[:-3], meta)
+            titles = re.findall(r"title: '([^']+)'", meta)
+            used = set(re.findall(r"phase\('([^']+)'\)", text))
+            self.assertTrue(used <= set(titles), (path, used - set(titles)))
+
+    def test_shared_blocks_are_identical(self):
+        def blocks(path):
+            with open(path, encoding="utf-8") as f:
+                text = f.read()
+            return [re.search(r"// ==== %s begin ====.*?// ==== %s end ====" % (n, n), text, re.DOTALL).group(0)
+                    for n in ("colosseum-lib", "colosseum-runtime")]
+        ref = blocks(WORKFLOW)
+        for path in workflow_files():
+            self.assertEqual(blocks(path), ref, "%s drifted; run python3 tools/sync_workflow_blocks.py" % path)
 
 
 if __name__ == "__main__":

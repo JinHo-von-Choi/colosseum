@@ -4,7 +4,7 @@ description: "Runs a web-search-grounded adversarial review of a contested quest
 license: MIT
 metadata:
   author: "최진호"
-  version: "3.0.0-beta.1"
+  version: "3.1.0-beta.1"
   updated: "2026-09-30"
   category: "Research"
   tags: "multi-ai, critical-thinking, adversarial-debate, fact-checking, web-search, argumentation"
@@ -63,14 +63,29 @@ COLOSSEUM_JSON
 
 ## 워크플로 모드
 
-1. 질문을 파싱한다(TYPE, STAKES, AS_OF). 창작형 질문은 워크플로 대상이 아니므로 [references/protocol.md](references/protocol.md) Phase 0의 창작 절차로 처리한다.
+1. 질문을 파싱한다(TYPE, STAKES, AS_OF). TYPE에 따라 워크플로를 고른다. 질문 하나에 여러 유형이 섞이면 질문이 최종적으로 묻는 것을 기준으로 하나를 고른다.
+
+| TYPE | 워크플로 | 추가 args |
+|------|---------|----------|
+| factual, technical | `colosseum:debate` | `mode: "factual"` 또는 `"technical"` |
+| decision ("A를 할까 B를 할까") | `colosseum:debate` | `mode: "decision"` |
+| normative (가치 판단) | `colosseum:debate` | `mode: "normative"` |
+| forecast (미래 사건의 확률) | `colosseum:forecast` | `kind: "probability"`, `resolution_criteria`, `resolve_by`, `extremize`, `forecast_id` |
+| estimate (수치 추정) | `colosseum:forecast` | `kind: "estimate"`, `unit` |
+| diagnostic ("X는 왜 일어났나") | `colosseum:diagnose` | 없음 |
+| creative (아이디어, 이름 짓기) | `colosseum:ideate` | 선택: `criteria` |
+
+   확률 예측은 해소 기준과 해소 시점이 명확해야 한다. 질문에서 정할 수 없으면 사용자에게 물어서 정한다. `extremize`는 `CTL forecast fit`의 `a` 값을 쓴다(기록이 부족하면 1.0). `forecast_id`는 `AS_OF`와 질문 요약으로 만든다.
 2. `python3`와 Bash가 있으면 `CTL start --session "${CLAUDE_SESSION_ID}" --stakes <stakes>`로 실행을 연다. 훅의 예산 강제와 출처 기록이 이때부터 작동한다.
-3. 명단을 만든다. 참가자는 3명이고 라벨 A, B, C를 무작위 순서로 배정한다. 위 도구 목록에 외부 CLI가 있으면 [references/protocol.md](references/protocol.md) §1.3 규칙대로 넣는다. 각 항목은 `{"label": "A", "family": "claude"}` 또는 `{"label": "B", "family": "gemini", "cli": "gemini"}` 형태다. 명단에 넣지 않은 CLI가 있으면 `cli_juror`로 지정한다.
-4. Workflow 도구를 `name: "colosseum:debate"`로 호출한다. args는 `{"question": 원문 질문, "as_of": "YYYY-MM-DD", "stakes": ..., "roster": [...], "cli_juror": ...}`이다. 이 스킬을 호출한 것 자체가 워크플로 실행에 대한 사용자의 동의다.
+3. 명단을 만든다. 참가자는 3명이고 라벨 A, B, C를 무작위 순서로 배정한다. 위 도구 목록에 외부 CLI가 있으면 [references/protocol.md](references/protocol.md) §1.3 규칙대로 넣는다. 각 항목은 `{"label": "A", "family": "claude"}` 또는 `{"label": "B", "family": "gemini", "cli": "gemini"}` 형태다. debate에서는 명단에 넣지 않은 CLI를 `cli_juror`로 지정한다.
+4. 고른 워크플로를 Workflow 도구로 호출한다. 공통 args는 `{"question": 원문 질문, "as_of": "YYYY-MM-DD", "stakes": ..., "roster": [...]}`이고, 표의 추가 args를 더한다. 이 스킬을 호출한 것 자체가 워크플로 실행에 대한 사용자의 동의다.
 5. 워크플로는 백그라운드에서 돈다. 완료 알림을 기다리고, 그동안 결과를 추측해 쓰지 않는다.
-6. 결과의 `report`를 사용자에게 그대로 보여 준다.
-7. `python3`가 있으면 결과의 `graph`를 `CTL verdict --session ... --file -`에 heredoc으로 넘겨 Python 엔진으로 판정을 다시 계산한다. `conflicts[].verdict`가 결과의 `verdict.conflicts`와 다르면 그 사실을 보고서 끝에 "판정 교차 검증 불일치"로 덧붙인다. 이어서 `CTL finish --session ...`로 실행을 닫는다.
-8. 워크플로가 실패하거나 비활성화되어 있으면 스크립트 모드로 처음부터 진행하고, 그 사실을 결과 머리에 적는다.
+6. 결과의 `report`를 사용자에게 그대로 보여 준다. 다시 요약하거나 고쳐 쓰지 않는다.
+7. `python3`가 있으면 마무리한다.
+   - debate: 결과의 `graph`를 `CTL verdict --session ... --file -`에 heredoc으로 넘겨 Python 엔진으로 판정을 다시 계산한다. `conflicts[].verdict`가 결과의 `verdict.conflicts`와 다르면 보고서 끝에 "판정 교차 검증 불일치"를 덧붙인다.
+   - forecast(확률): 결과의 `record`를 `CTL forecast add`에 heredoc으로 넘겨 예측 기록에 남긴다. 해소 시점이 지나면 `CTL forecast resolve --id <id> --outcome 0|1`로 결과를 기록하고, `CTL forecast score`로 Brier 점수와 보정 구간을 본다.
+   - 모든 워크플로: `CTL finish --session ...`로 실행을 닫는다.
+8. 워크플로가 실패하거나 비활성화되어 있으면 스크립트 모드로 처음부터 진행하고, 그 사실을 결과 머리에 적는다. 예측, 진단, 창작 질문도 스크립트 모드에서는 [references/modes.md](references/modes.md)의 절차를 손으로 따른다.
 
 ## 스크립트 모드
 
@@ -105,6 +120,7 @@ COLOSSEUM_JSON
 | [references/protocol.md](references/protocol.md) | 구성 요소, 명단, CLI 호출, Prime Directive, Phase 0~4 상세와 프롬프트 |
 | [references/formats.md](references/formats.md) | 참가자 JSON 턴, drafts.json, graph.json 형식과 판정 라벨 |
 | [references/output.md](references/output.md) | 최종 보고서와 진행 중 투명성 출력 형식 |
+| [references/modes.md](references/modes.md) | 예측(델파이), 추정, 진단(ACH-lite), 창작(명목집단법), 결정, 가치 판단 모드의 절차와 근거 |
 
 ## 금지 사항
 
