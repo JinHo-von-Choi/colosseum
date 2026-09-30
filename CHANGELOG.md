@@ -1,5 +1,24 @@
 # Changelog
 
+## 3.1.0-beta.1 (2026-09-30)
+
+### Added
+- Question-type routing in the skill: factual and technical, decision, normative, forecast, estimate, diagnostic and creative questions each get their own procedure (`references/modes.md`).
+- `colosseum:forecast` workflow: base rates, a published-forecast scan, blind first estimates, Delphi rounds with anonymous median and range feedback, revisions over 10 points capped unless backed by new checked evidence, family-weighted log-odds pooling, a 50/50 blend with a checked published forecast, premortem, and a forecast record.
+- `colosseum:diagnose` workflow: blind hypotheses, consolidation with a catch-all hypothesis, a consistency matrix that drops non-diagnostic evidence, inconsistency scores used for explanation only, and pooled probability distributions.
+- `colosseum:ideate` workflow: silent parallel generation, merging with sources kept, blind rankings and a Borda count.
+- Decision mode (an antithesis plan built on the negated key assumptions, with switch signals) and normative mode (value premises become a conditional map) in `colosseum:debate`.
+- Forecast log with `colosseum.py forecast add | resolve | list | score | fit`: Brier score, log loss, calibration bins, and an extremizing factor fitted by log loss once 20 forecasts have resolved.
+- `scripts/modes.py` with the aggregation rules, ported into the shared workflow library and checked for parity.
+- `tools/sync_workflow_blocks.py` keeps the shared library and runtime blocks identical across workflows; a test fails on drift.
+
+### Verified
+- Real runs of all three new workflows through the skill's routing: a creative question (15 ideas merged to 13, unanimous Borda winner), a probability forecast (Delphi stable after one revision round, record written to the log), and a diagnostic question (two hypotheses plus a catch-all, pooled probabilities).
+
+### Not yet verified
+- Whether each mode beats the plain debate procedure on its own kind of question (roadmap stage 4 gate).
+- Calibration fitting on real resolved forecasts (the log has none yet).
+
 ## 3.0.0-beta.1 (2026-09-30)
 
 ### Added

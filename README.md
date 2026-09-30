@@ -45,6 +45,19 @@ The report always includes the blind-draft positions, `BASELINE_VOTE`, `P0`, the
 
 Three execution modes share one protocol, one data format and one verdict engine. The skill picks the first mode the environment supports.
 
+Questions are routed by type before anything runs:
+
+| Question type | Workflow | Procedure |
+|---------------|----------|-----------|
+| Factual, technical | `colosseum:debate` | Vote baseline, quote-verified evidence rounds, computed verdicts |
+| Decision | `colosseum:debate` (decision mode) | Adds dialectical inquiry: the strongest plan built on the opposite assumptions, with switch signals |
+| Normative | `colosseum:debate` (normative mode) | Rules only on empirical premises; value premises become a conditional map |
+| Forecast, estimate | `colosseum:forecast` | Base rates, Delphi rounds with anonymous feedback, evidence-gated revisions, pooled forecast, published-forecast blend, forecast log |
+| Diagnostic | `colosseum:diagnose` | Competing hypotheses, diagnosticity matrix (explanatory only), pooled probabilities |
+| Creative | `colosseum:ideate` | Nominal group technique: silent generation, merge, blind ranking, Borda count |
+
+Probability forecasts go into a forecast log (`colosseum.py forecast add | resolve | score | fit`). Once 20 or more have resolved, the extremizing factor used for pooling is fitted from the log instead of assumed.
+
 | Mode | When | Who holds the flow |
 |------|------|--------------------|
 | Workflow | Plugin installed and the Workflow tool available (Claude Code v2.1.154 or later) | `workflows/debate.js`, run as `colosseum:debate`: schema-validated turns, JavaScript vote, quote matching and verdict engine |
@@ -55,11 +68,12 @@ In workflow mode the skill opens a run (so the hooks enforce budgets), launches 
 
 | Part | Path | Role |
 |------|------|------|
+| Mode workflows | `workflows/forecast.js`, `diagnose.js`, `ideate.js` | Delphi forecasting, ACH-lite diagnosis, nominal group technique |
 | Debate workflow | `workflows/debate.js` | Fact base, blind drafts, quote checks, baseline, dissenter, issue map, evidence rounds, order-swapped juror, verdict engine, override rule, premortem, report |
 | Launcher skill | `skills/colosseum/SKILL.md` | Core rules and the phase-by-phase command table (about 100 lines) |
 | References | `skills/colosseum/references/` | Full protocol and prompts, JSON formats, report format |
 | Run controller | `skills/colosseum/scripts/colosseum.py` | Phase state machine (illegal transitions and extra rounds are refused), budgets, snippet-mode switch |
-| Computation | `baseline.py`, `quote_match.py`, `verdict_engine.py`, `metrics.py` | Vote and pooled probability, quote classification, argument-graph verdicts, evidence checklist |
+| Computation | `baseline.py`, `quote_match.py`, `verdict_engine.py`, `metrics.py`, `modes.py`, `calibration.py` | Vote and pooled probability, quote classification, argument-graph verdicts, evidence checklist |
 | Participant agent | `agents/participant.md` | `colosseum:participant`: web tools only, no messaging or sub-agents, JSON turn format |
 | CLI relay agent | `agents/cli-proxy.md` | `colosseum:cli-proxy`: Bash only, relays a prompt to gemini, llm or aichat through a quoted heredoc |
 | Hooks | `hooks/hooks.json` | Search and fetch budgets, fetch block in snippet mode, messaging block during blind drafts, source ledger, one-shot repair of malformed turns |

@@ -1,17 +1,15 @@
 export const meta = {
-  name: 'debate',
-  description: 'Colosseum: blind drafts, vote baseline, quote-verified evidence rounds, computed verdicts',
-  whenToUse: 'Launched by the colosseum skill with a prepared roster; not for direct use',
+  name: 'forecast',
+  description: 'Colosseum forecast mode: Delphi rounds with anonymous feedback, evidence-gated revisions, pooled forecast',
+  whenToUse: 'Launched by the colosseum skill for forecasts and numeric estimates; not for direct use',
   phases: [
-    { title: 'Fact base', detail: 'opposing-angle searches and source records' },
-    { title: 'Drafts', detail: 'blind parallel drafts from the roster' },
+    { title: 'Fact base', detail: 'base rates, current state, published forecasts' },
+    { title: 'Round 1', detail: 'blind estimates with reference classes' },
     { title: 'Verify', detail: 'quote checks against fetched pages' },
-    { title: 'Baseline', detail: 'position groups, family-weighted vote, pooled probability' },
-    { title: 'Antithesis', detail: 'decision mode: the strongest plan built on the opposite assumptions' },
-    { title: 'Issues', detail: 'double cruxes from the drafts' },
-    { title: 'Rounds', detail: 'prosecutor, adverse witness, defender' },
-    { title: 'Verdict', detail: 'order-swapped juror, argument-graph engine, premortem' },
-    { title: 'Report', detail: 'final report' },
+    { title: 'Delphi', detail: 'anonymous feedback and revisions' },
+    { title: 'Aggregate', detail: 'pooled forecast and market blend' },
+    { title: 'Premortem', detail: 'assume the forecast failed' },
+    { title: 'Report', detail: 'final report and forecast record' },
   ],
 }
 
@@ -393,29 +391,31 @@ const LIB = (() => {
 // ==== colosseum-lib end ====
 
 // ---------------------------------------------------------------------------
-// Orchestration. args:
-//   question   : the user's question (string)
-//   mode       : factual | technical | decision | normative (default factual)
-//   as_of      : reference date, e.g. "2026-09-30"
-//   stakes     : low | medium | high
-//   roster     : [{label: "A", family: "claude"}, {label: "B", family: "gemini", cli: "gemini"}, ...]
-//   cli_juror  : optional CLI name for the juror when it is not in the roster
-//   max_rounds : optional, default 3 (never above 3)
-//   budget     : optional {search: 25, fetch: 15}
+// args:
+//   question            : what is being forecast
+//   kind                : probability | estimate (default probability)
+//   unit                : unit of an estimate, e.g. "USD" or "%"
+//   resolution_criteria : how the question resolves (required for probability)
+//   resolve_by          : resolution date "YYYY-MM-DD"
+//   as_of               : today "YYYY-MM-DD"
+//   roster              : [{label, family, cli?}, ...]
+//   rounds              : Delphi revision rounds after round 1 (default 2, max 3)
+//   extremize           : pooling factor fitted from the forecast log (default 1.0)
+//   forecast_id         : id for the forecast log
+//   budget              : optional {search, fetch}
 // ---------------------------------------------------------------------------
 
 const A = args || {}
 if (!A.question || !Array.isArray(A.roster) || A.roster.length < 2) {
-  throw new Error('colosseum:debate needs args.question and a roster of at least 2 participants')
+  throw new Error('colosseum:forecast needs args.question and a roster of at least 2 participants')
 }
-const STAKES = ['low', 'medium', 'high'].includes(A.stakes) ? A.stakes : 'medium'
-const MODE = ['factual', 'technical', 'decision', 'normative'].includes(A.mode) ? A.mode : 'factual'
-const MAX_ROUNDS = Math.min(3, Math.max(1, A.max_rounds || 3))
-const ISSUES_PER_ROUND = STAKES === 'high' ? 2 : 1
-const THETA = STAKES === 'high' ? 0.7 : 0.5
+const KIND = A.kind === 'estimate' ? 'estimate' : 'probability'
+if (KIND === 'probability' && (!A.resolution_criteria || !A.resolve_by)) {
+  throw new Error('a probability forecast needs resolution_criteria and resolve_by')
+}
 const AS_OF = A.as_of || 'unspecified'
-const FAMILIES = new Set(A.roster.map((p) => p.family))
-const HOMOGENEOUS = FAMILIES.size < 2
+const ROUNDS = Math.min(3, Math.max(1, A.rounds || 2))
+const STABLE = 0.02
 
 // ==== colosseum-runtime begin ====
 // Shared by every Colosseum workflow: participant turns, the evidence registry, quote checks
@@ -517,257 +517,125 @@ async function buildFactBase(question, asOf, extra) {
 }
 // ==== colosseum-runtime end ====
 
-const S_DRAFT = { type: 'object', properties: { position: { type: 'string' }, claims: S_CLAIMS, key_assumptions: { type: 'array', items: { type: 'string' }, maxItems: 3 }, cruxes: { type: 'array', items: { type: 'object', properties: { text: { type: 'string' }, type: { type: 'string', enum: ['empirical', 'value'] } }, required: ['text', 'type'] }, maxItems: 2 }, strongest_counter: { type: 'string' }, probability: { type: 'number', minimum: 0.02, maximum: 0.98 } }, required: ['position', 'claims', 'key_assumptions', 'cruxes', 'strongest_counter', 'probability'] }
-const S_GROUPS = { type: 'object', properties: { groups: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, labels: { type: 'array', items: { type: 'string' } }, summary: { type: 'string' } }, required: ['id', 'labels', 'summary'] } } }, required: ['groups'] }
-const S_ISSUES = { type: 'object', properties: { issues: { type: 'array', maxItems: 4, items: { type: 'object', properties: { question: { type: 'string' }, kind: { type: 'string', enum: ['empirical', 'value'] }, a_label: { type: 'string' }, a_claim: { type: 'integer' }, b_label: { type: 'string' }, b_claim: { type: 'integer' }, changes_answer: { type: 'boolean' } }, required: ['question', 'kind', 'a_label', 'a_claim', 'b_label', 'b_claim', 'changes_answer'] } } }, required: ['issues'] }
-const S_PROSECUTOR = { type: 'object', properties: { steelman: { type: 'string' }, attack_subtype: { type: 'string', enum: ['rebut', 'undercut', 'undermine'] }, attack: { type: 'string' }, claims: S_CLAIMS, position_update: { type: 'string' } }, required: ['steelman', 'attack_subtype', 'attack', 'claims', 'position_update'] }
-const S_WITNESS = { type: 'object', properties: { premise: { type: 'string' }, verdict: { type: 'string', enum: ['holds', 'fails', 'partly holds'] }, if_false: { type: 'string' }, claims: S_CLAIMS }, required: ['premise', 'verdict', 'if_false', 'claims'] }
-const S_DEFENDER = { type: 'object', properties: { steelman_check: { type: 'string', enum: ['faithful', 'distorted'] }, distortion_reason: { type: 'string' }, response: { type: 'string', enum: ['concede', 'rebut', 'partial'] }, text: { type: 'string' }, claims: S_CLAIMS, change_basis: { type: 'string' }, position: { type: 'string' } }, required: ['steelman_check', 'response', 'text', 'claims', 'change_basis', 'position'] }
-const S_JUROR = { type: 'object', properties: { winner: { type: 'string', enum: ['first', 'second', 'both', 'neither'] }, reason: { type: 'string' } }, required: ['winner', 'reason'] }
-const participantByLabel = Object.fromEntries(A.roster.map((p) => [p.label, p]))
-const cliJuror = A.cli_juror || (A.roster.find((p) => p.cli) || {}).cli || null
+const target = KIND === 'probability'
+  ? '확률 예측이다. 해소 기준: ' + A.resolution_criteria + ' | 해소 시점: ' + A.resolve_by + '. estimate에는 이 사건이 일어날 확률(0.02-0.98)을 넣는다.'
+  : '수치 추정이다. 단위: ' + (A.unit || '명시 없음') + '. estimate에는 가장 가능성 높은 값, low와 high에는 80% 구간을 넣는다.'
 
-// ---- graph ----
-const graphClaims = []
-const relations = []
-function addClaims(label, prefix, claims, evs) {
-  return (claims || []).map((c, i) => {
-    const id = label + '.' + prefix + i
-    const e = evs && evs[i]
-    graphClaims.push({ id, author: label, text: c.text, kind: c.kind || 'fact', evidence: e ? [e.id] : [], status: 'active' })
-    return id
-  })
-}
-const claimById = (id) => graphClaims.find((c) => c.id === id)
+const S_R1 = { type: 'object', properties: { base_rate: { type: 'object', properties: { reference_class: { type: 'string' }, value: { type: 'string' } }, required: ['reference_class', 'value'] }, estimate: { type: 'number' }, low: { type: 'number' }, high: { type: 'number' }, reason_higher: { type: 'string' }, reason_lower: { type: 'string' }, claims: S_CLAIMS }, required: ['base_rate', 'estimate', 'reason_higher', 'reason_lower', 'claims'] }
+const S_REV = { type: 'object', properties: { estimate: { type: 'number' }, low: { type: 'number' }, high: { type: 'number' }, change_basis: { type: 'string' }, claims: S_CLAIMS }, required: ['estimate', 'change_basis', 'claims'] }
+const S_MARKET = { type: 'object', properties: { found: { type: 'boolean' }, source: { type: 'string' }, url: { type: 'string' }, quote: { type: 'string' }, probability: { type: 'number' } }, required: ['found'] }
+
+const clipP = (x) => Math.min(0.98, Math.max(0.02, Number(x)))
+const norm = (x) => (KIND === 'probability' ? clipP(x) : Number(x))
 
 // ============================================================================
 phase('Fact base')
-const FB = await buildFactBase(A.question, AS_OF)
-const factList = FB.list
-const factEvidence = FB.evs
-const FACT_BASE = FB.text
+const FB = await buildFactBase(A.question, AS_OF, '기저율(비슷한 사건이 과거에 얼마나 자주 일어났는지)과 현재 상태를 반드시 포함하라. ')
+let market = null
+if (KIND === 'probability') {
+  const m = await agent('예측시장이나 집단 예측 플랫폼(Metaculus, Polymarket, Good Judgment Open, Manifold 등)에서 다음 질문과 같거나 매우 가까운 질문의 현재 확률을 WebSearch로 찾아라. 해소 기준이 다르면 found를 false로 하라. 찾으면 URL과 확률이 적힌 원문 구절을 넣어라.\n질문: ' + A.question + '\n해소 기준: ' + A.resolution_criteria + '\n해소 시점: ' + A.resolve_by, { schema: S_MARKET, phase: 'Fact base', label: 'market-scan', effort: 'low' })
+  if (m && m.found && m.url && m.quote && m.probability > 0 && m.probability < 1) {
+    const e = await checkEvidence(m.url, m.quote, 'published forecast ' + m.probability, 'Fact base')
+    market = { source: m.source, url: m.url, probability: clipP(m.probability), check: e.quote_status, usable: isChecked(e) }
+  }
+}
 
 // ============================================================================
-phase('Drafts')
-const draftBody = (i) => '다음 질문에 대한 입장을 명확히 선언하라. 다른 참가자의 입장은 공개되지 않는다.\n검색 출발점: ' + ANGLES[i % ANGLES.length] + '\n\n질문: ' + A.question + '\n기준 시점: ' + AS_OF + '\n참고 팩트:\n' + FACT_BASE + '\n\nFACT_BASE 밖의 근거가 필요하면 직접 검색하라(최대 2회). claims는 2-4개, probability는 당신의 position이 옳을 확률이다.'
-const drafts = (await parallel(A.roster.map((p, i) => () => turn(p, 'draft', draftBody(i), S_DRAFT, 'Drafts').then((d) => (d ? { p, d } : null))))).filter(Boolean)
-if (drafts.length < 2) throw new Error('fewer than 2 drafts came back; cannot continue')
-const dropped = A.roster.filter((p) => !drafts.some((x) => x.p.label === p.label)).map((p) => p.label)
-if (dropped.length) log('초안 없음으로 제외: ' + dropped.join(', '))
+phase('Round 1')
+const r1Body = (i) => '질문: ' + A.question + '\n기준 시점: ' + AS_OF + '\n' + target + '\n검색 출발점: ' + ANGLES[i % ANGLES.length] + '\n참고 팩트:\n' + FB.text + '\n\n먼저 참조 집단과 기저율을 정하고, 그다음 이 사안의 특수성으로 조정하라. reason_higher에는 값이 더 높아야 할 가장 강한 이유, reason_lower에는 더 낮아야 할 가장 강한 이유를 적어라. 다른 참가자의 추정은 공개되지 않는다.'
+const r1 = (await parallel(A.roster.map((p, i) => () => turn(p, 'forecaster', r1Body(i), S_R1, 'Round 1').then((d) => (d ? { p, d } : null))))).filter(Boolean)
+if (r1.length < 2) throw new Error('fewer than 2 round-1 estimates came back')
 
 phase('Verify')
-const draftClaimIds = {}
-await pipeline(drafts, (x) => checkClaims(x.d.claims, 'Verify'), (evs, x) => { draftClaimIds[x.p.label] = addClaims(x.p.label, 'd', x.d.claims, evs); return true })
-
-// ============================================================================
-phase('Baseline')
-const grouped = await agent('아래 초안들의 POSITION을 의미가 같은 것끼리 묶어라. 묶음마다 id(P1, P2, ...), 속한 라벨, 한 줄 요약을 적어라. 모든 라벨이 정확히 한 묶음에 들어가야 한다.\n\n' + drafts.map((x) => x.p.label + ': ' + x.d.position).join('\n'), { schema: S_GROUPS, phase: 'Baseline', label: 'group-positions', effort: 'low' })
-const positionOf = {}
-for (const g of (grouped && grouped.groups) || []) for (const l of g.labels) positionOf[l] = g.id
-drafts.forEach((x, i) => { if (!positionOf[x.p.label]) positionOf[x.p.label] = 'P_' + x.p.label })
-const positionSummary = Object.fromEntries(((grouped && grouped.groups) || []).map((g) => [g.id, g.summary]))
-const counterEvidence = []
-// strongest_counter carries no URL or quote in a draft, so it can never count as verified evidence here.
-const base = LIB.baseline({ drafts: drafts.map((x) => ({ label: x.p.label, family: x.p.family, position: positionOf[x.p.label], probability: x.d.probability })), verified_counter: false })
-log('BASELINE_VOTE: ' + base.baseline_vote + ' | P0: ' + base.p0 + ' | ' + base.roster)
-
-let dissenter = null
-if (base.needs_dissenter) {
-  const p = { label: 'D', family: 'claude' }
-  const d = await turn(p, 'dissenter', '다음 결론에 대한 가장 강한 반대 증거를 찾아라. 결론: "' + (positionSummary[base.p0_position] || drafts[0].d.position) + '"\n질문: ' + A.question + '\n각 증거는 claims에 URL과 원문 인용으로 적어라.', { type: 'object', properties: { claims: S_CLAIMS }, required: ['claims'] }, 'Baseline')
-  if (d) {
-    const evs = await checkClaims(d.claims, 'Baseline')
-    dissenter = { claims: d.claims, ids: addClaims('D', 'x', d.claims, evs), verified: evs.some(isChecked) }
-    counterEvidence.push(...evs.filter(isChecked).map((e) => e.id))
-    log('반대자: 검증된 반대 증거 ' + counterEvidence.length + '건')
-  }
-}
-// Decision mode: dialectical inquiry. A separate agent builds the best plan that rests on the
-// negation of the leading drafts' key assumptions, so the debate compares real alternatives.
-let antithesis = null
-if (MODE === 'decision') {
-  phase('Antithesis')
-  const leading = drafts.filter((x) => positionOf[x.p.label] === base.p0_position)
-  antithesis = await agent(PRIME + '\n\n질문: ' + A.question + '\n\n우세한 권고: ' + (positionSummary[base.p0_position] || '') + '\n그 권고가 기대는 핵심 가정:\n' + leading.flatMap((x) => x.d.key_assumptions || []).map((k) => '- ' + k).join('\n') + '\n\n이 가정들이 거짓이라고 놓고, 그 위에서 가장 설득력 있는 대안 권고를 세워라. 대안이 옳으려면 무엇이 참이어야 하는지, 어떤 신호가 관찰되면 대안으로 갈아타야 하는지 적어라. 사실 주장에는 URL과 원문 인용을 붙여라.', {
-    schema: { type: 'object', properties: { alternative: { type: 'string' }, negated_assumptions: { type: 'array', items: { type: 'string' } }, must_be_true: { type: 'array', items: { type: 'string' } }, switch_signals: { type: 'array', items: { type: 'string' } }, claims: S_CLAIMS }, required: ['alternative', 'negated_assumptions', 'must_be_true', 'switch_signals', 'claims'] },
-    agentType: 'colosseum:participant', phase: 'Antithesis', label: 'antithesis',
-  })
-  if (antithesis) antithesis.evidence = (await checkClaims(antithesis.claims, 'Antithesis')).map((e) => e && { id: e.id, check: e.quote_status })
-}
-
-const debate = !base.skip_debate && !(base.needs_dissenter && !(dissenter && dissenter.verified) && base.unanimous)
-
-// ============================================================================
-let issues = []
-const valueIssues = []
-const rounds = []
-let exitReason = debate ? null : base.skip_debate ? '토론 불필요(이질 명단 만장일치)' : '토론 불필요(검증된 반대 증거 없음)'
-
-if (debate) {
-  phase('Issues')
-  const listing = drafts.map((x) => x.p.label + ' (position ' + positionOf[x.p.label] + '): ' + x.d.position + '\n' + (x.d.claims || []).map((c, i) => '  claim ' + i + ': ' + c.text).join('\n') + '\n  cruxes: ' + JSON.stringify(x.d.cruxes)).join('\n\n') + (dissenter ? '\n\nD (dissenter):\n' + dissenter.claims.map((c, i) => '  claim ' + i + ': ' + c.text).join('\n') : '')
-  const labelEnum = drafts.map((x) => x.p.label).concat(dissenter ? ['D'] : [])
-  const issueSchema = JSON.parse(JSON.stringify(S_ISSUES))
-  issueSchema.properties.issues.items.properties.a_label = { type: 'string', enum: labelEnum }
-  issueSchema.properties.issues.items.properties.b_label = { type: 'string', enum: labelEnum }
-  const found = await agent('아래 초안들에서 쟁점을 최대 4개 찾아라. 우선순위는 더블 크럭스: 한쪽 입장은 그것이 참이어야, 다른 쪽 입장은 거짓이어야 성립하는 명제. 각 쟁점마다 서로 충돌하는 두 주장을 a_label/a_claim, b_label/b_claim으로 지정하라. 라벨 칸에는 라벨 글자 하나만(예: A), claim 칸에는 번호만 넣는다. 두 주장은 서로 다른 라벨이어야 한다. 검색으로 결판낼 수 있으면 empirical, 가치 판단이면 value.' + (MODE === 'normative' ? ' 이 질문은 가치 판단 질문이다. 경험적 전제와 가치 전제를 빠짐없이 갈라라.' : '') + ' 쟁점 해소가 원래 질문의 답을 바꾸는지 changes_answer에 적어라.\n\n질문: ' + A.question + '\n\n' + listing, { schema: issueSchema, phase: 'Issues', label: 'issue-map' })
-  const claimRef = (label, idx) => (label === 'D' ? dissenter && dissenter.ids[idx] : draftClaimIds[label] && draftClaimIds[label][idx])
-  for (const it of (found && found.issues) || []) {
-    const a = claimRef(it.a_label, it.a_claim), b = claimRef(it.b_label, it.b_claim)
-    if (!a || !b || it.a_label === it.b_label) continue
-    if (it.kind === 'value') { valueIssues.push(it.question); continue }
-    if (!it.changes_answer) continue
-    issues.push({ question: it.question, a, b, aLabel: it.a_label, bLabel: it.b_label, open: true })
-  }
-  log('쟁점: 경험적 ' + issues.length + ', 가치 ' + valueIssues.length)
-  if (!issues.length) exitReason = '해소(경험적 쟁점 없음)'
-
-  // ==========================================================================
-  phase('Rounds')
-  const labels = drafts.map((x) => x.p.label)
-  for (let round = 1; round <= MAX_ROUNDS && issues.some((i) => i.open); round++) {
-    const picked = issues.filter((i) => i.open).slice(0, ISSUES_PER_ROUND)
-    let verifiedChanges = 0, flips = 0
-    for (const iss of picked) {
-      const defLabel = iss.aLabel, proLabel = iss.bLabel
-      const witLabel = labels.find((l) => l !== defLabel && l !== proLabel) || null
-      const target = claimById(iss.a), counter = claimById(iss.b)
-      const describe = (c) => c.text + (c.evidence[0] ? ' [' + c.evidence[0] + ': ' + evidence.find((e) => e.id === c.evidence[0]).quote_status + ']' : ' [증거 없음]')
-      const proBody = '쟁점: ' + iss.question + '\n\n변호인(' + defLabel + ')의 주장: ' + describe(target) + '\n당신(' + proLabel + ')의 주장: ' + describe(counter) + '\n\n먼저 변호인의 주장과 최선의 근거를 3문장 이내로 공정하게 재진술하라(steelman). 그다음 검색으로 반박하라. 공격 대상이 결론이면 rebut, 근거와 결론을 잇는 추론이면 undercut, 인용된 근거 자체면 undermine. 추측 비판은 금지다.'
-      const witBody = '쟁점: ' + iss.question + '\n\n' + defLabel + '의 주장: ' + describe(target) + '\n' + proLabel + '의 주장: ' + describe(counter) + '\n\n양측이 공유하지만 검증하지 않은 전제 하나를 골라 검색으로 확인하라. 어느 쪽도 편들지 마라.'
-      const [pro, wit] = await parallel([
-        () => turn(participantByLabel[proLabel] || { label: proLabel, family: 'claude' }, 'prosecutor', proBody, S_PROSECUTOR, 'Rounds'),
-        () => (witLabel ? turn(participantByLabel[witLabel], 'adverse_witness', witBody, S_WITNESS, 'Rounds') : Promise.resolve(null)),
-      ])
-      const proEvs = pro ? await checkClaims(pro.claims, 'Rounds') : []
-      const witEvs = wit ? await checkClaims(wit.claims, 'Rounds') : []
-      const fmt = (claims, evs) => (claims || []).map((c, i) => '- ' + c.text + ' | ' + (c.url || '') + ' | "' + (c.quote || '') + '" [대조: ' + (evs[i] ? evs[i].quote_status : 'u') + ']').join('\n')
-      const defBody = '쟁점: ' + iss.question + '\n당신(' + defLabel + ')의 주장: ' + describe(target) + '\n\n검사의 재진술(steelman): ' + (pro ? pro.steelman : '(없음)') + '\n검사의 공격(' + (pro ? pro.attack_subtype : '-') + '): ' + (pro ? pro.attack : '(없음)') + '\n검사의 증거:\n' + (pro ? fmt(pro.claims, proEvs) : '') + '\n\n반대증인: 전제 "' + (wit ? wit.premise : '-') + '" → ' + (wit ? wit.verdict : '-') + '\n' + (wit ? fmt(wit.claims, witEvs) : '') + '\n\n먼저 steelman이 당신 주장을 공정하게 옮겼는지 판정하라. 대조 결과가 v, n, snippet인 증거에 기반한 공격이면 인정(concede)하고 change_basis에 그 증거를 적어라. u 인용에 기대는 공격은 검색 근거로 반박하라.'
-      const def = await turn(participantByLabel[defLabel] || { label: defLabel, family: 'claude' }, 'defender', defBody, S_DEFENDER, 'Rounds')
-      const defEvs = def ? await checkClaims(def.claims, 'Rounds') : []
-
-      const r = { round, issue: iss.question, prosecutor: proLabel, defender: defLabel, witness: witLabel, steelman: def ? def.steelman_check : 'n/a', response: def ? def.response : 'none', quotes: { v: 0, n: 0, snippet: 0, u: 0 } }
-      for (const e of [...proEvs, ...witEvs, ...defEvs].filter(Boolean)) r.quotes[e.quote_status]++
-      const attackValid = pro && !(def && def.steelman_check === 'distorted')
-      if (attackValid) {
-        const ids = addClaims(proLabel, 'r' + round + 'p', pro.claims, proEvs)
-        ids.forEach((id) => relations.push({ type: 'attack', subtype: pro.attack_subtype, from: id, to: iss.a }))
-      } else if (pro) r.void_attack = true
-      if (wit && wit.verdict === 'fails') {
-        const ids = addClaims(witLabel, 'r' + round + 'w', wit.claims, witEvs)
-        ids.forEach((id) => { relations.push({ type: 'attack', subtype: 'undermine', from: id, to: iss.a }); relations.push({ type: 'attack', subtype: 'undermine', from: id, to: iss.b }) })
-      }
-      if (def) {
-        const ids = addClaims(defLabel, 'r' + round + 'd', def.claims, defEvs)
-        const proIds = graphClaims.filter((c) => c.id.startsWith(proLabel + '.r' + round + 'p')).map((c) => c.id)
-        if (def.response !== 'concede') ids.forEach((id) => proIds.forEach((pid) => relations.push({ type: 'attack', subtype: 'rebut', from: id, to: pid })))
-        const attackChecked = attackValid && proEvs.some(isChecked)
-        if (def.response === 'concede' || def.response === 'partial') {
-          if (attackChecked) {
-            verifiedChanges++
-            if (def.response === 'concede') { target.status = 'withdrawn'; iss.open = false }
-            r.concession = 'evidence'
-          } else { flips++; r.concession = 'CONFORMITY_FLIP' }
-        }
-      }
-      if (pro && /변경|바꾸|수정|concede|update/i.test(pro.position_update || '') && proEvs.some(isChecked)) verifiedChanges++
-      rounds.push(r)
-    }
-    rounds[rounds.length - 1].round_summary = { verified_changes: verifiedChanges, conformity_flips: flips, open: issues.filter((i) => i.open).length }
-    log('ROUND ' + round + '/' + MAX_ROUNDS + ' | 검증된 변경 ' + verifiedChanges + ' | 동조 플립 ' + flips + ' | 미해소 ' + issues.filter((i) => i.open).length)
-    if (!issues.some((i) => i.open)) { exitReason = '해소'; break }
-    if (verifiedChanges === 0) { exitReason = '안정'; break }
-    if (round === MAX_ROUNDS) exitReason = '상한'
-  }
+const seenEvidence = new Set()
+for (const x of r1) {
+  const evs = await checkClaims(x.d.claims, 'Verify')
+  evs.filter(Boolean).forEach((e) => seenEvidence.add(e.id))
 }
 
 // ============================================================================
-phase('Verdict')
-const doc = {
-  evidence: evidence.map((e) => ({ id: e.id, url: e.url, quote: e.quote, reliability: e.reliability, quote_status: e.quote_status, support: e.support, freshness: e.freshness, origin: e.origin })),
-  claims: graphClaims.map((c) => ({ id: c.id, author: c.author, text: c.text, kind: c.kind, evidence: c.evidence, status: c.status })),
-  relations,
-  conflicts: issues.map((i) => ({ a: i.a, b: i.b })),
+phase('Delphi')
+const state = r1.map((x) => ({ p: x.p, value: norm(x.d.estimate), low: x.d.low, high: x.d.high, higher: x.d.reason_higher, lower: x.d.reason_lower, history: [norm(x.d.estimate)] }))
+const round1Values = state.map((s) => ({ label: s.p.label, family: s.p.family, value: s.value }))
+const revisions = []
+let exitReason = '상한'
+for (let round = 2; round <= ROUNDS + 1; round++) {
+  const fb = LIB.delphiFeedback(state.map((s) => ({ label: s.p.label, value: s.value })))
+  const above = state.filter((s) => fb.above.includes(s.p.label)).map((s) => s.higher).filter(Boolean)
+  const below = state.filter((s) => fb.below.includes(s.p.label)).map((s) => s.lower).filter(Boolean)
+  const feedback = '익명 집계: 중앙값 ' + fb.median + ' | 최저 ' + fb.low + ' | 최고 ' + fb.high + '\n중앙값보다 높게 본 쪽의 근거: ' + (above.join(' / ') || '없음') + '\n중앙값보다 낮게 본 쪽의 근거: ' + (below.join(' / ') || '없음')
+  const turns = await parallel(state.map((s) => () => turn(s.p, 'delphi', '질문: ' + A.question + '\n' + target + '\n\n당신의 직전 추정: ' + s.value + '\n' + feedback + '\n\n추정을 유지하거나 수정하라. 동료의 수나 중앙값은 증거가 아니다. ' + (KIND === 'probability' ? '10%p' : '10%') + '를 넘게 움직이려면 새 증거를 claims에 URL과 원문 인용으로 붙이고 change_basis에 그 근거를 적어라. 바꾸지 않으면 change_basis에 "no change".', S_REV, 'Delphi')))
+  let maxMove = 0, capped = 0
+  for (let i = 0; i < state.length; i++) {
+    const s = state[i], t = turns[i]
+    if (!t) continue
+    const evs = await checkClaims(t.claims, 'Delphi')
+    const fresh = evs.filter((e) => isChecked(e) && !seenEvidence.has(e.id))
+    evs.filter(Boolean).forEach((e) => seenEvidence.add(e.id))
+    const scale = KIND === 'probability' ? 1 : Math.max(Math.abs(s.value), 1e-9)
+    const lim = LIB.limitMove(s.value, norm(t.estimate), fresh.length > 0, scale)
+    if (lim.capped) capped++
+    const move = KIND === 'probability' ? Math.abs(lim.value - s.value) : Math.abs(lim.value - s.value) / Math.max(Math.abs(s.value), 1e-9)
+    maxMove = Math.max(maxMove, move)
+    revisions.push({ round, label: s.p.label, from: s.value, proposed: norm(t.estimate), to: lim.value, capped: lim.capped, new_evidence: fresh.map((e) => e.id), basis: t.change_basis })
+    s.value = lim.value
+    if (t.low !== undefined) s.low = t.low
+    if (t.high !== undefined) s.high = t.high
+    s.history.push(lim.value)
+  }
+  log('Delphi ' + (round - 1) + '/' + ROUNDS + ' | 최대 이동 ' + Math.round(maxMove * 1000) / 1000 + ' | 증거 없는 큰 이동 제한 ' + capped)
+  if (maxMove < STABLE) { exitReason = '안정'; break }
 }
-const engine = LIB.verdict(doc, THETA)
 
-// Juror: sees anonymized sides and checked evidence only, judges each issue in both orders.
-const jurorFamily = cliJuror ? 'non-claude' : 'claude (동종 배심원)'
-async function jurorCall(first, second, iss, order) {
-  const side = (c) => c.text + '\n  증거: ' + (c.evidence.map((id) => evidence.find((e) => e.id === id)).filter(isChecked).map((e) => '"' + e.quote + '" (' + e.url + ', ' + e.quote_status + ')').join('; ') || '검증된 증거 없음')
-  const rel = relations.filter((r) => r.to === first.id || r.to === second.id).length
-  const prompt = '쟁점: ' + iss.question + '\n\n첫째 주장: ' + side(first) + '\n\n둘째 주장: ' + side(second) + '\n\n(두 주장에 대한 공격 관계 수: ' + rel + ')\n검증된 증거만 근거로 어느 주장이 더 잘 뒷받침되는지 판정하라. 미확인 인용은 증거가 아니다. 길이나 말투는 무시하라.'
-  const opts = { schema: S_JUROR, phase: 'Verdict', label: 'juror:' + order }
-  if (cliJuror) return agent('CLI: ' + cliJuror + '\n\n아래 프롬프트를 이 CLI에 그대로 전달하고, CLI가 돌려준 판정을 스키마에 맞춰 반환하라.\n\n----- PROMPT -----\n' + prompt, Object.assign(opts, { agentType: 'colosseum:cli-proxy' }))
-  return agent(prompt, Object.assign(opts, { agentType: 'colosseum:participant' }))
+// ============================================================================
+phase('Aggregate')
+const finals = state.map((s) => ({ label: s.p.label, family: s.p.family, value: s.value }))
+let result
+if (KIND === 'probability') {
+  const rows = (vals) => ({ drafts: vals.map((v) => ({ label: v.label, family: v.family, position: 'YES', probability: v.value })) })
+  const sameSide = finals.every((v) => v.value > 0.5) || finals.every((v) => v.value < 0.5)
+  const a = sameSide ? Number(A.extremize || 1) : 1
+  const p0 = LIB.baseline(rows(round1Values)).p0
+  const pooled = LIB.baseline(rows(finals), a)
+  let pFinal = pooled.p0
+  if (market && market.usable) {
+    const lg = (x) => Math.log(x / (1 - x))
+    pFinal = Math.round((1 / (1 + Math.exp(-(0.5 * lg(clipP(pFinal)) + 0.5 * lg(market.probability))))) * 1000) / 1000
+  }
+  result = { kind: KIND, p0, pooled: pooled.p0, extremizing: pooled.extremizing, market_blend: !!(market && market.usable), p_final: pFinal }
+} else {
+  const lows = state.filter((s) => s.low !== undefined).map((s) => ({ family: s.p.family, value: s.low }))
+  const highs = state.filter((s) => s.high !== undefined).map((s) => ({ family: s.p.family, value: s.high }))
+  result = { kind: KIND, unit: A.unit || null, p0: LIB.familyMedian(round1Values), estimate: LIB.familyMedian(finals), interval_80: [lows.length ? LIB.familyMedian(lows) : null, highs.length ? LIB.familyMedian(highs) : null] }
 }
-const jury = await parallel(issues.map((iss) => async () => {
-  const a = claimById(iss.a), b = claimById(iss.b)
-  const [x, y] = await parallel([() => jurorCall(a, b, iss, 'ab'), () => jurorCall(b, a, iss, 'ba')])
-  const map1 = x ? { first: 'A', second: 'B', both: 'both', neither: 'neither' }[x.winner] : null
-  const map2 = y ? { first: 'B', second: 'A', both: 'both', neither: 'neither' }[y.winner] : null
-  return { issue: iss.question, first_order: map1, second_order: map2, consistent: !!map1 && map1 === map2, winner: map1 === map2 ? map1 : 'order-sensitive', reasons: [x && x.reason, y && y.reason] }
-}))
+log(KIND === 'probability' ? 'P0 ' + result.p0 + ' → P_final ' + result.p_final : '초기 ' + result.p0 + ' → 최종 ' + result.estimate)
 
-// Override rule: the answer departs from the vote baseline only with a re-verified minority
-// quote, a failed majority rebuttal, and the juror's agreement in both orders.
-let finalPosition = base.baseline_vote
-const overrides = []
-issues.forEach((iss, k) => {
-  const c = engine.conflicts[k]
-  if (!c) return
-  const posA = positionOf[iss.aLabel] || 'D', posB = positionOf[iss.bLabel] || 'D'
-  const majority = base.baseline_vote
-  let minoritySide = null
-  if (posA === majority && posB !== majority) minoritySide = 'B'
-  if (posB === majority && posA !== majority) minoritySide = 'A'
-  if (!minoritySide) return
-  const minClaim = claimById(minoritySide === 'A' ? iss.a : iss.b)
-  const majStatus = engine.status[minoritySide === 'A' ? iss.b : iss.a] || 'WITHDRAWN'
-  const reverified = minClaim.evidence.some((id) => { const e = evidence.find((x) => x.id === id); return e && (e.quote_status === 'v' || (degraded && e.quote_status === 'snippet')) })
-  const engineWins = c.verdict === (minoritySide === 'A' ? 'A_WINS' : 'B_WINS') || (majStatus === 'REJECTED' || majStatus === 'WITHDRAWN')
-  const juryOk = jury[k] && jury[k].consistent && jury[k].winner === minoritySide
-  if (reverified && engineWins && juryOk) overrides.push({ issue: iss.question, to: minoritySide === 'A' ? posA : posB, evidence: minClaim.evidence })
-})
-if (overrides.length) finalPosition = overrides[0].to
-
-const finalClaims = graphClaims.filter((c) => c.status === 'active' && positionOf[c.author] === finalPosition && ['ACCEPTED', 'IN_UNPROVEN'].includes(engine.status[c.id]))
-const decisiveIds = new Set(issues.flatMap((i) => [i.a, i.b]))
-doc.final = finalClaims.filter((c) => !['value', 'recommendation', 'forecast'].includes(c.kind)).map((c) => ({ claim: c.id, weight: decisiveIds.has(c.id) ? 3 : 2 }))
-const checklist = LIB.checklist(doc, STAKES === 'high')
-
-const premortemAuthor = drafts.find((x) => positionOf[x.p.label] !== finalPosition) || drafts[drafts.length - 1]
-const answerSketch = (positionSummary[finalPosition] || '') + '\n근거 주장:\n' + finalClaims.map((c) => '- ' + c.text).join('\n')
-const premortem = await turn(premortemAuthor.p, 'premortem', '지금은 이 질문이 해소된 시점이다. 아래 최종 답은 틀린 것으로 확정되었다. 가장 그럴듯한 원인 3가지를 대고, 원인마다 검색으로 확인할 방법을 하나씩 제시한 뒤, 적어도 하나는 실제로 검색해 claims에 URL과 원문 인용으로 적어라. 이어서 underconfidence에 이 답이 오히려 과소확신일 가장 강한 근거를 적어라.\n\n질문: ' + A.question + '\n최종 답: ' + answerSketch, S_PREMORTEM, 'Verdict')
-const premortemEvs = premortem ? await checkClaims(premortem.claims, 'Verdict') : []
-
-// P_final: without an override the answer keeps the pooled baseline; with one, the pooled
-// probability of the new position. Neither is calibrated.
-const draftRows = drafts.map((x) => ({ label: x.p.label, family: x.p.family, position: positionOf[x.p.label], probability: x.d.probability }))
-const pFinal = overrides.length ? Math.round(LIB.pooledProbability(draftRows, finalPosition, 1) * 1000) / 1000 : base.p0
+// ============================================================================
+phase('Premortem')
+const contrary = KIND === 'probability' ? (result.p_final >= 0.5 ? '사건은 일어나지 않았다' : '사건은 일어났다') : '실제 값은 80% 구간 밖이었다'
+const outlier = state.slice().sort((x, y) => Math.abs(y.value - (result.p_final || result.estimate)) - Math.abs(x.value - (result.p_final || result.estimate)))[0]
+const premortem = await turn(outlier.p, 'premortem', '지금은 ' + (A.resolve_by || '해소 시점') + '이다. ' + contrary + '. 예측: ' + JSON.stringify(result) + '\n질문: ' + A.question + '\n가장 그럴듯한 원인 3가지와 각각의 확인 방법을 적고, 적어도 하나는 검색해 claims에 URL과 원문 인용으로 붙여라. underconfidence에는 이 예측이 오히려 과소확신일 가장 강한 근거를 적어라.', S_PREMORTEM, 'Premortem')
+const premortemEvs = premortem ? await checkClaims(premortem.claims, 'Premortem') : []
 
 // ============================================================================
 phase('Report')
+const record = KIND === 'probability' ? {
+  id: A.forecast_id || (AS_OF + '-' + A.question.length),
+  question: A.question, resolution_criteria: A.resolution_criteria, resolve_by: A.resolve_by, created: AS_OF,
+  p0: result.p0, p_final: result.p_final, participants: finals.map((f) => ({ label: f.label, family: f.family, value: f.value })),
+  extremizing: result.extremizing, market: market && market.usable ? market.probability : null,
+} : null
 const data = {
-  question: A.question, as_of: AS_OF, stakes: STAKES, mode: MODE, antithesis,
-  roster: drafts.map((x) => ({ label: x.p.label, family: x.p.family, cli: x.p.cli || null })), dropped,
-  roster_kind: HOMOGENEOUS ? '동종 명단' : '이질 명단',
+  question: A.question, as_of: AS_OF, kind: KIND, target,
+  roster: r1.map((x) => ({ label: x.p.label, family: x.p.family })), roster_kind: new Set(A.roster.map((p) => p.family)).size < 2 ? '동종 명단' : '이질 명단',
   mode: degraded ? '원문 대조 불가: 스니펫 수준 검증' : '원문 대조',
-  fact_base: factList.map((f, i) => ({ id: 'F' + (i + 1), claim: f.claim, url: f.url, quote: f.quote, check: factEvidence[i] && factEvidence[i].quote_status })),
-  drafts: drafts.map((x) => ({ label: x.p.label, position_group: positionOf[x.p.label], position: x.d.position, strongest_counter: x.d.strongest_counter, key_assumptions: x.d.key_assumptions })),
-  baseline: base, dissenter: dissenter && { verified: dissenter.verified, claims: dissenter.claims },
-  debate_ran: debate, exit_reason: exitReason || '상한', rounds, value_issues: valueIssues,
-  issues: issues.map((i, k) => ({ question: i.question, a: i.a, b: i.b, engine: engine.conflicts[k], jury: jury[k] })),
-  engine: { status: engine.status, strength: engine.strength, demoted_undercuts: engine.demoted_undercuts },
-  final_position: finalPosition, final_position_summary: positionSummary[finalPosition] || null, overrides,
-  p0: base.p0, p_final: pFinal,
-  premortem: premortem && { causes: premortem.causes, underconfidence: premortem.underconfidence, evidence: premortemEvs.filter(Boolean).map((e) => ({ id: e.id, url: e.url, quote: e.quote, check: e.quote_status, support: e.support })) },
-  checklist,
-  evidence: evidence.map((e) => ({ id: e.id, url: e.url, quote: e.quote, publisher: e.publisher, published: e.published, reliability: e.reliability, check: e.quote_status, support: e.support, origin: e.origin, note: e.note })),
+  fact_base: FB.list.map((f, i) => ({ id: 'F' + (i + 1), claim: f.claim, url: f.url, quote: f.quote, check: FB.evs[i] && FB.evs[i].quote_status })),
+  market, round1: r1.map((x) => ({ label: x.p.label, base_rate: x.d.base_rate, estimate: norm(x.d.estimate), low: x.d.low, high: x.d.high, reason_higher: x.d.reason_higher, reason_lower: x.d.reason_lower })),
+  revisions, exit_reason: exitReason, result,
+  premortem: premortem && { causes: premortem.causes, underconfidence: premortem.underconfidence, evidence: premortemEvs.filter(Boolean).map((e) => ({ id: e.id, url: e.url, check: e.quote_status, support: e.support })) },
+  evidence: evidence.map((e) => ({ id: e.id, url: e.url, quote: e.quote, reliability: e.reliability, check: e.quote_status, support: e.support, note: e.note })),
   budget: { fetches: fetchesUsed + '/' + FETCH_BUDGET, failed_hosts: [...failedHosts] },
 }
+const report = await agent('아래 JSON은 Colosseum 예측 모드(델파이) 결과다. 이 데이터만으로 한국어 보고서를 써라. 데이터에 없는 사실을 보태지 마라. 형식:\n\n=== COLOSSEUM (예측) ===\n질문, 기준 시점, 해소 기준과 해소 시점(확률 예측일 때), 명단(이질/동종), 델파이 라운드 수와 종료 사유, 모드\n## 초기 팩트 베이스 (대조 결과 표시)\n## 기저율 (참가자별 참조 집단과 기저율)\n## 1차 블라인드 추정 (라벨별 값, 근거)\n## 델파이 수정 이력 (표: 라운드, 라벨, 이전, 제안, 반영, 증거 없는 큰 이동 제한 여부, 새 증거)\n## 공개 예측 (예측시장이나 집단 예측, 대조 결과와 반영 여부)\n## 최종 예측 (확률이면 P0 → P_final과 UNCALIBRATED, 추정이면 초기값 → 최종값과 80% 구간)\n## 사전부검 (원인과 확인 방법, 증거 반영/기각)\n## 이 예측이 틀릴 수 있는 조건 (관찰하면 수정해야 할 신호)\n## 출처\n\n' + JSON.stringify(data), { phase: 'Report', label: 'report' })
 
-const modeNote = MODE === 'decision' ? '의사결정 모드다. 최종 답변은 권고 형태로 쓰고, 대안(antithesis)과 그 대안으로 갈아타야 할 신호를 "권고가 뒤집히는 조건"으로 적어라.\n' : MODE === 'normative' ? '가치 판단 모드다. 승자를 가리지 말고, 경험적 쟁점의 판정과 "X를 Y보다 중시하면 A, 아니면 B" 형태의 조건부 지도를 최종 답변으로 써라.\n' : ''
-const report = await agent(modeNote + '아래 JSON은 Colosseum 실행 결과다. 이 데이터만으로 한국어 최종 보고서를 써라. 데이터에 없는 사실을 보태지 마라. 형식:\n\n=== COLOSSEUM ===\n질문, 기준 시점, 명단(라벨과 모델 계열, 이질/동종 명단), 진행(라운드 수와 종료 사유), 모드\n## 초기 팩트 베이스 (대조 결과 표시)\n## 기준선 (초안 입장 A/B/C, BASELINE_VOTE, P0)\n## 라운드별 전개 (표: 라운드, 쟁점, 역할, 인용 v/n/snippet/u, 인정/동조 플립/무효 공격)\n## 충돌 판정 (표: 쟁점, 엔진 판정, 배심원 두 순서 판정. 엔진 라벨 표기: A_WINS→A 우세, B_WINS→B 우세, PARTIAL_BOTH_SURVIVE→쌍방 부분 인정, CONDITIONAL/VALUE_CONDITIONAL→조건부, LOSER_REFUTED_WINNER_UNPROVEN→한쪽 반박됨·다른 쪽 미입증, UNRESOLVED/NEITHER_ESTABLISHED→판정 불가)\n## 반대 입장의 가장 강한 논거\n## 합의 도달 사항\n## 해소되지 않은 쟁점 (조건부 답변, 가치 쟁점 포함)\n## 최종 답변 (팩트 클레임마다 [증거ID], 기준선 대비 일치/역전, P_final과 UNCALIBRATED)\n## 출처 (증거ID, URL, 발행처, 대조 결과)\n## 증거 품질 점검표 (checklist를 그대로 옮김)\n## 메타 정보 (가져오기 예산, 동조 플립, 배심원 계열: ' + jurorFamily + ', 사전부검 반영/기각, 제외된 참가자, 이 답이 틀릴 수 있는 조건)\n\n사전부검에서 대조 결과가 v, n, snippet이고 support가 none이 아닌 증거가 있으면 최종 답변에 그 단서를 반영하고 "반영"으로, 아니면 "기각"으로 적어라. 교착을 합의로 포장하지 마라.\n\n' + JSON.stringify(data), { phase: 'Report', label: 'report' })
-
-return { report, data, graph: doc, verdict: engine }
+return { report, data, record }

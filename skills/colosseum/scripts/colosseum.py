@@ -10,6 +10,7 @@
   verdict      deterministic verdicts from graph.json
   metrics      evidence-quality checklist from graph.json
   finish       close the run
+  forecast     forecast log: add (stdin JSON), resolve, score, fit (shared across sessions)
 
 Every command prints one JSON object. Exit code 0 on success, 2 on refusal or bad input.
 """
@@ -22,6 +23,7 @@ from urllib.parse import urlparse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import baseline as B  # noqa: E402
+import calibration as C  # noqa: E402
 import graph as G  # noqa: E402
 import metrics as M  # noqa: E402
 import quote_match as Q  # noqa: E402
@@ -232,6 +234,28 @@ def cmd_finish(a):
     return emit({"ok": True, "used": st["used"]})
 
 
+def cmd_forecast(a):
+    root = S.data_root(a.data)
+    if a.action == "add":
+        if a.file and a.file != "-":
+            with open(a.file, encoding="utf-8") as f:
+                rec = C.add(root, json.load(f))
+        else:
+            rec = C.add(root, json.load(sys.stdin))
+        return emit({"ok": True, "logged": rec["id"], "log": C.log_path(root)})
+    if a.action == "resolve":
+        if not a.id or a.outcome is None:
+            raise ValueError("resolve needs --id and --outcome")
+        return emit({"ok": True, "resolved": C.resolve(root, a.id, a.outcome)})
+    records = C.load(root)
+    if a.action == "list":
+        return emit({"forecasts": [{k: r.get(k) for k in ("id", "question", "resolve_by", "p_final", "outcome")}
+                                   for r in records]})
+    if a.action == "score":
+        return emit({"p_final": C.score(records, "p_final"), "p0": C.score(records, "p0")})
+    return emit(C.fit_extremizing(records))
+
+
 def parser():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--data", help="data root (default: $CLAUDE_PLUGIN_DATA or ~/.claude/colosseum)")
@@ -283,6 +307,13 @@ def parser():
         sp.set_defaults(fn=fn)
 
     with_session(sub.add_parser("finish")).set_defaults(fn=cmd_finish)
+
+    sp = sub.add_parser("forecast")
+    sp.add_argument("action", choices=["add", "resolve", "list", "score", "fit"])
+    sp.add_argument("--id")
+    sp.add_argument("--outcome", type=int, choices=[0, 1])
+    sp.add_argument("--file", help="record JSON for add: a path, or - for stdin (the default)")
+    sp.set_defaults(fn=cmd_forecast)
     return p
 
 
