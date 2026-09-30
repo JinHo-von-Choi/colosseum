@@ -1,6 +1,6 @@
 {
   "name": "colosseum",
-  "version": "3.0.0-alpha.1",
+  "version": "3.0.0-beta.1",
   "description": "Web-search-grounded adversarial review: blind drafts from independent agents set a vote baseline, and only evidence with verified verbatim quotes can move the verdict.",
   "author": {
     "name": "Jinho Choi",

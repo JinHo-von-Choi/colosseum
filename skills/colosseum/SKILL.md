@@ -4,7 +4,7 @@ description: "Runs a web-search-grounded adversarial review of a contested quest
 license: MIT
 metadata:
   author: "최진호"
-  version: "3.0.0-alpha.1"
+  version: "3.0.0-beta.1"
   updated: "2026-09-30"
   category: "Research"
   tags: "multi-ai, critical-thinking, adversarial-debate, fact-checking, web-search, argumentation"
@@ -38,8 +38,11 @@ metadata:
 
 !`command -v python3 gemini llm aichat 2>/dev/null || true`
 
-- 위 목록에 `python3`가 있고 Bash를 쓸 수 있으면 아래 "스크립트 모드"로 진행한다.
-- 그렇지 않으면 "수동 모드"로 진행하고, 결과 머리에 "스크립트 없음: 수동 계산"을 명시한다.
+모드는 다음 순서로 고른다.
+
+1. 워크플로 모드: Workflow 도구가 있고, Agent 도구의 subagent_type 목록에 `colosseum:participant`가 있으면(플러그인 설치) 이 모드로 진행한다. 흐름, 인용 대조, 기준선, 판정 계산을 워크플로 스크립트가 쥔다.
+2. 스크립트 모드: 워크플로를 쓸 수 없지만 위 목록에 `python3`가 있고 Bash를 쓸 수 있으면 이 모드로 진행한다.
+3. 수동 모드: 둘 다 안 되면 이 모드로 진행하고, 결과 머리에 "스크립트 없음: 수동 계산"을 명시한다.
 - `gemini`, `llm`, `aichat`이 보이면 참가자 명단에 넣을 수 있다(명단 규칙과 호출 방법은 [references/protocol.md](references/protocol.md) §1.2~§2.3).
 
 이 문서에서 `CTL`은 다음 명령을 뜻한다.
@@ -57,6 +60,17 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/colosseum.py" --data "${CLAUDE_PLUGIN_DATA}
 {"drafts": [...]}
 COLOSSEUM_JSON
 ```
+
+## 워크플로 모드
+
+1. 질문을 파싱한다(TYPE, STAKES, AS_OF). 창작형 질문은 워크플로 대상이 아니므로 [references/protocol.md](references/protocol.md) Phase 0의 창작 절차로 처리한다.
+2. `python3`와 Bash가 있으면 `CTL start --session "${CLAUDE_SESSION_ID}" --stakes <stakes>`로 실행을 연다. 훅의 예산 강제와 출처 기록이 이때부터 작동한다.
+3. 명단을 만든다. 참가자는 3명이고 라벨 A, B, C를 무작위 순서로 배정한다. 위 도구 목록에 외부 CLI가 있으면 [references/protocol.md](references/protocol.md) §1.3 규칙대로 넣는다. 각 항목은 `{"label": "A", "family": "claude"}` 또는 `{"label": "B", "family": "gemini", "cli": "gemini"}` 형태다. 명단에 넣지 않은 CLI가 있으면 `cli_juror`로 지정한다.
+4. Workflow 도구를 `name: "colosseum:debate"`로 호출한다. args는 `{"question": 원문 질문, "as_of": "YYYY-MM-DD", "stakes": ..., "roster": [...], "cli_juror": ...}`이다. 이 스킬을 호출한 것 자체가 워크플로 실행에 대한 사용자의 동의다.
+5. 워크플로는 백그라운드에서 돈다. 완료 알림을 기다리고, 그동안 결과를 추측해 쓰지 않는다.
+6. 결과의 `report`를 사용자에게 그대로 보여 준다.
+7. `python3`가 있으면 결과의 `graph`를 `CTL verdict --session ... --file -`에 heredoc으로 넘겨 Python 엔진으로 판정을 다시 계산한다. `conflicts[].verdict`가 결과의 `verdict.conflicts`와 다르면 그 사실을 보고서 끝에 "판정 교차 검증 불일치"로 덧붙인다. 이어서 `CTL finish --session ...`로 실행을 닫는다.
+8. 워크플로가 실패하거나 비활성화되어 있으면 스크립트 모드로 처음부터 진행하고, 그 사실을 결과 머리에 적는다.
 
 ## 스크립트 모드
 
