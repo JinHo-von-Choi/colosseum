@@ -12,7 +12,7 @@
       "name": "colosseum",
       "source": "./",
       "description": "Web-search-grounded adversarial debate between independent AI agents.",
-      "version": "2.1.0",
+      "version": "2.2.0",
       "author": {
         "name": "Jinho Choi"
       }
