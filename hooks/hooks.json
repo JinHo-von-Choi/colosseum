@@ -1,0 +1,41 @@
+{
+  "description": "Colosseum run enforcement: search and fetch budgets, snippet-mode fetch block, blind-draft messaging block, a source ledger, and participant turn validation. Every hook is a no-op unless the session has a running Colosseum run.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "WebSearch|WebFetch|SendMessage|mcp__.*brave_web_search",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/skills/colosseum/scripts/hook.py\" pre",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "WebSearch|WebFetch|mcp__.*brave_web_search",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/skills/colosseum/scripts/hook.py\" post",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "^colosseum:participant$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/skills/colosseum/scripts/hook.py\" subagent-stop",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

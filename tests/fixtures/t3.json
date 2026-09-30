@@ -1,0 +1,56 @@
+{
+ "evidence": [
+  {
+   "id": "E1",
+   "reliability": "high",
+   "support": "full",
+   "quote_status": "v"
+  }
+ ],
+ "claims": [
+  {
+   "id": "X",
+   "evidence": [
+    "E1"
+   ]
+  },
+  {
+   "id": "Y",
+   "evidence": [
+    "E1"
+   ]
+  },
+  {
+   "id": "Z",
+   "evidence": [
+    "E1"
+   ]
+  }
+ ],
+ "relations": [
+  {
+   "type": "attack",
+   "subtype": "undercut",
+   "from": "X",
+   "to": "Y"
+  },
+  {
+   "type": "attack",
+   "subtype": "undercut",
+   "from": "Y",
+   "to": "Z"
+  },
+  {
+   "type": "attack",
+   "subtype": "undercut",
+   "from": "Z",
+   "to": "X"
+  }
+ ],
+ "conflicts": [
+  {
+   "a": "X",
+   "b": "Y"
+  }
+ ]
+}

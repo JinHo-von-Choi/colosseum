@@ -1,5 +1,22 @@
 # Changelog
 
+## 3.0.0-alpha.1 (2026-09-30)
+
+### Added
+- Deterministic core in `skills/colosseum/scripts/` (standard library only): a phase state machine that refuses illegal transitions, extra rounds after a stable round and rounds past the cap; family-weighted vote and pooled probability; quote classification (exact, near by in-order word match with a number guard, unverified); argument-graph verdicts (grounded and preferred semantics, damped DF-QuAD); an evidence-quality checklist.
+- `colosseum:participant` plugin agent with web tools only, no messaging or sub-agents, and a JSON turn format.
+- Plugin hooks, active only during a Colosseum run: search and fetch budgets, fetch block in snippet mode, SendMessage block during blind drafts, a source ledger with result URLs, and a one-shot repair request for malformed participant turns.
+- JSON inputs travel over heredoc stdin and are saved by the scripts, so the Moderator never writes into the plugin data directory.
+- Unit tests and a GitHub Actions workflow.
+
+### Fixed
+- Verdict engine: an undercut without checked evidence no longer defeats a verified claim; evidence without an origin collapses to its URL host (or one shared cluster) instead of counting as independent; the no-evidence prior is combined by noisy-OR so weak evidence never scores below none; unverified quotes score 0.
+
+### Changed
+- SKILL.md is a 100-line launcher. The full protocol, JSON formats and report format moved to `references/`.
+- `install.sh` links the whole skill directory, replacing the SKILL.md-only link from earlier versions.
+- The skill description names fact-check requests explicitly, and the participant agent is described as internal. With the agent added, a fact-check prompt had stopped triggering the skill (0 of 3 eval runs, against 3 of 3 for 2.2.0); after the change it triggered in 3 of 3.
+
 ## 2.2.0 (2026-09-30)
 
 ### Changed
