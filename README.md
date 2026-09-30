@@ -43,15 +43,25 @@ The report always includes the blind-draft positions, `BASELINE_VOTE`, `P0`, the
 
 ## Architecture
 
-The protocol text tells the Moderator what to do; code decides what is allowed and computes the results.
+Three execution modes share one protocol, one data format and one verdict engine. The skill picks the first mode the environment supports.
+
+| Mode | When | Who holds the flow |
+|------|------|--------------------|
+| Workflow | Plugin installed and the Workflow tool available (Claude Code v2.1.154 or later) | `workflows/debate.js`, run as `colosseum:debate`: schema-validated turns, JavaScript vote, quote matching and verdict engine |
+| Script | Python and Bash available | The Moderator, with `colosseum.py` refusing illegal phase transitions and computing every number |
+| Manual | Neither | The Moderator alone, following `references/protocol.md`; the report says so |
+
+In workflow mode the skill opens a run (so the hooks enforce budgets), launches the workflow, shows its report, and recomputes the verdicts with the Python engine as a cross-check. The workflow's JavaScript library is tested for agreement with the Python scripts on the same inputs.
 
 | Part | Path | Role |
 |------|------|------|
+| Debate workflow | `workflows/debate.js` | Fact base, blind drafts, quote checks, baseline, dissenter, issue map, evidence rounds, order-swapped juror, verdict engine, override rule, premortem, report |
 | Launcher skill | `skills/colosseum/SKILL.md` | Core rules and the phase-by-phase command table (about 100 lines) |
 | References | `skills/colosseum/references/` | Full protocol and prompts, JSON formats, report format |
 | Run controller | `skills/colosseum/scripts/colosseum.py` | Phase state machine (illegal transitions and extra rounds are refused), budgets, snippet-mode switch |
 | Computation | `baseline.py`, `quote_match.py`, `verdict_engine.py`, `metrics.py` | Vote and pooled probability, quote classification, argument-graph verdicts, evidence checklist |
 | Participant agent | `agents/participant.md` | `colosseum:participant`: web tools only, no messaging or sub-agents, JSON turn format |
+| CLI relay agent | `agents/cli-proxy.md` | `colosseum:cli-proxy`: Bash only, relays a prompt to gemini, llm or aichat through a quoted heredoc |
 | Hooks | `hooks/hooks.json` | Search and fetch budgets, fetch block in snippet mode, messaging block during blind drafts, source ledger, one-shot repair of malformed turns |
 
 The verdict engine turns the debate into an argument graph. Each claim gets a base score from its evidence (source reliability, quote check, support, freshness), combined by noisy-OR across independent origins, so syndicated copies count once. Attacks become defeats unless the target is clearly stronger; an undercut defeats unconditionally only when it carries checked evidence. Grounded semantics then labels every claim accepted, rejected or undecided, preferred extensions give the branches of a conditional answer, and damped DF-QuAD strengths give the confidence. The same input always yields the same verdict and the same input hash.
@@ -128,7 +138,7 @@ Simple lookups, summaries, translations and coding tasks are intentionally out o
 python3 -m unittest discover -s tests
 ```
 
-The unit tests cover the verdict engine (including regression tests for evidence-free undercuts, uncollapsed syndicated copies, non-monotonic scores and credited unverified quotes), 20 labeled quote-matching samples, the vote and pooling rules, the checklist, turn validation, the phase state machine and the hooks.
+Node is needed for the JavaScript parity tests; they are skipped without it. The unit tests cover the verdict engine (including regression tests for evidence-free undercuts, uncollapsed syndicated copies, non-monotonic scores and credited unverified quotes), 20 labeled quote-matching samples, the vote and pooling rules, the checklist, turn validation, the phase state machine and the hooks. The parity tests run the workflow's JavaScript library against the Python scripts on 43 argument graphs, 20 checklists, the quote samples and 30 baselines, and check that the workflow script parses.
 
 ## Evaluation
 

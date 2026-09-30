@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.0.0-beta.1 (2026-09-30)
+
+### Added
+- `workflows/debate.js`, run as `colosseum:debate`: the whole protocol as a workflow script with schema-validated turns. It builds the fact base, runs blind drafts in parallel, checks quotes, computes the vote baseline, runs a dissenter for homogeneous unanimous rosters, maps double cruxes, runs evidence rounds (prosecutor and adverse witness in parallel, then defender), asks the juror in both orders, computes verdicts with the argument-graph engine, applies the override rule, runs a premortem and writes the report.
+- The workflow carries a JavaScript port of the vote, pooling, quote matching, verdict engine and checklist. `tests/test_js_parity.py` checks it against the Python scripts under Node.
+- `colosseum:cli-proxy` agent that relays prompts to external AI CLIs, so CLI participants and CLI jurors work inside the workflow.
+- Workflow mode in the skill: open the run, launch the workflow, show the report, recompute the verdicts with the Python engine as a cross-check, close the run. Script mode and manual mode remain as fallbacks.
+
+### Verified
+- A plugin workflow resolves as `colosseum:<name>` through the Workflow tool, `agentType: 'colosseum:participant'` resolves inside a workflow, and plugin hooks fire for workflow agents (their searches count against the run budget).
+- End-to-end runs through the workflow completed with two evidence rounds, a logged conformity flip, order-swapped juror rulings and a matching Python cross-check.
+
+### Not yet verified
+- Accuracy against the vote-plus-verification baseline at matched cost (roadmap stage 3 gate).
+- External CLI participants and a non-Claude juror (no CLI was available in the test environment).
+
 ## 3.0.0-alpha.1 (2026-09-30)
 
 ### Added
