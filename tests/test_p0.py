@@ -18,6 +18,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(ROOT, "skills", "colosseum", "scripts"))
 sys.path.insert(0, HERE)
 
+import calibration as C  # noqa: E402
 import graph as G  # noqa: E402
 import quote_match as Q  # noqa: E402
 import verdict_engine as V  # noqa: E402
@@ -304,6 +305,105 @@ class RunIsolation(_Cli):
         if os.name == "posix":
             self.assertEqual(stat.S_IMODE(os.stat(run["run_dir"]).st_mode), 0o700)
             self.assertEqual(stat.S_IMODE(os.stat(os.path.join(self.tmp.name, "sessions", "s1", "state.json")).st_mode), 0o600)
+
+
+def _rec(i, p=0.6):
+    return {"id": "f%d" % i, "question": "q%d" % i, "resolution_criteria": "c", "resolve_by": "2027-01-01",
+            "p_final": p, "p0": p}
+
+
+def _add_worker(root, i):
+    C.add(root, _rec(i))
+
+
+def _retry_worker(root, _):
+    C.add(root, _rec(0))
+
+
+def _resolve_worker(root, i):
+    C.resolve(root, "f%d" % i, 1)
+
+
+def _crash_worker(root, commit):
+    con = C._connect(root)
+    con.execute("BEGIN IMMEDIATE")
+    C._add(con, C.validate(_rec(99)), None)
+    if commit:
+        con.execute("COMMIT")
+    os._exit(9)
+
+
+class ForecastStore(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def pool(self, fn, n):
+        import multiprocessing as mp
+        ctx = mp.get_context("fork") if hasattr(os, "fork") else mp.get_context()
+        procs = [ctx.Process(target=fn, args=(self.root, i)) for i in range(n)]
+        for p in procs:
+            p.start()
+        for p in procs:
+            p.join(60)
+        return [p.exitcode for p in procs]
+
+    def test_parallel_unique_adds_are_all_kept(self):
+        self.assertEqual(set(self.pool(_add_worker, 100)), {0})
+        self.assertEqual(len(C.load(self.root)), 100)
+
+    def test_retries_of_one_add_keep_one_record(self):
+        self.assertEqual(set(self.pool(_retry_worker, 100)), {0})
+        self.assertEqual([r["id"] for r in C.load(self.root)], ["f0"])
+
+    def test_adds_and_resolves_interleave(self):
+        for i in range(20):
+            C.add(self.root, _rec(i))
+        self.assertEqual(set(self.pool(_resolve_worker, 20)), {0})
+        self.assertEqual(sum(1 for r in C.load(self.root) if r["outcome"] == 1), 20)
+        self.assertFalse(C.resolve(self.root, "f3", 1)["changed"])
+        with self.assertRaises(ValueError):
+            C.resolve(self.root, "f3", 0)
+        with self.assertRaises(ValueError):
+            C.add(self.root, dict(_rec(3), p_final=0.7))
+
+    def test_crash_before_commit_loses_only_the_uncommitted_record(self):
+        C.add(self.root, _rec(1))
+        self.assertEqual(self.pool(lambda root, i: _crash_worker(root, False), 1), [9])
+        self.assertEqual([r["id"] for r in C.load(self.root)], ["f1"])
+        self.assertEqual(self.pool(lambda root, i: _crash_worker(root, True), 1), [9])
+        self.assertEqual(sorted(r["id"] for r in C.load(self.root)), ["f1", "f99"])
+        C.add(self.root, _rec(2))
+
+    def test_legacy_jsonl_is_imported_once_and_verified(self):
+        with open(os.path.join(self.root, "forecasts.jsonl"), "w") as f:
+            for i in range(3):
+                f.write(json.dumps(dict(_rec(i), outcome=1 if i == 0 else None)) + "\n")
+        with self.assertRaises(ValueError):
+            C.add(self.root, _rec(5))
+        out = C.import_jsonl(self.root)
+        self.assertEqual((out["rows"], out["unique_ids"], out["resolved"], out["created"]), (3, 3, 1, 3))
+        self.assertTrue(os.path.exists(out["backup"]))
+        self.assertTrue(C.import_jsonl(self.root)["already_imported"])
+        C.add(self.root, _rec(5))
+        exported = [json.loads(line) for line in C.export_jsonl(self.root).splitlines()]
+        self.assertEqual(len(exported), 4)
+        self.assertEqual([r["outcome"] for r in exported if r["id"] == "f0"], [1])
+
+
+class ForecastScoring(unittest.TestCase):
+    def test_raw_brier_and_log_loss(self):
+        s = C.score([{"p_final": 0.99, "outcome": 0}])
+        self.assertAlmostEqual(s["brier"], 0.9801, places=4)
+        self.assertAlmostEqual(s["log_loss"], 4.6052, places=4)
+
+    def test_bins_are_half_open_with_a_closed_last_bin(self):
+        self.assertEqual([C.bin_index(p) for p in (0.0, 0.2, 0.39999, 0.4, 0.8, 1.0)], [0, 1, 1, 2, 4, 4])
+        recs = [{"p_final": p, "outcome": 1} for p in (0.2, 0.4, 0.6, 0.8)]
+        self.assertEqual(sum(b["n"] for b in C.score(recs)["bins"]), 4)
 
 
 if __name__ == "__main__":

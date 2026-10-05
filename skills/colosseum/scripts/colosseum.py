@@ -370,14 +370,25 @@ def cmd_forecast(a):
     if a.action == "add":
         if a.file and a.file != "-":
             with open(a.file, encoding="utf-8") as f:
-                rec = C.add(root, json.load(f))
+                rec = C.add(root, json.load(f), a.event_id)
         else:
-            rec = C.add(root, json.load(sys.stdin))
-        return emit({"ok": True, "logged": rec["id"], "log": C.log_path(root)})
+            rec = C.add(root, json.load(sys.stdin), a.event_id)
+        return emit({"ok": True, "logged": rec["id"], "created": rec["created"], "store": C.db_path(root)})
     if a.action == "resolve":
         if not a.id or a.outcome is None:
             raise ValueError("resolve needs --id and --outcome")
-        return emit({"ok": True, "resolved": C.resolve(root, a.id, a.outcome)})
+        return emit({"ok": True, "resolved": C.resolve(root, a.id, a.outcome, a.event_id)})
+    if a.action == "import":
+        return emit(C.import_jsonl(root, None if a.file in (None, "-") else a.file))
+    if a.action == "export":
+        text = C.export_jsonl(root)
+        if a.file and a.file != "-":
+            S.write_private(a.file, text)
+            return emit({"ok": True, "exported": text.count("\n"), "file": a.file})
+        sys.stdout.write(text)
+        return 0
+    if a.action == "status":
+        return emit(C.status(root))
     records = C.load(root)
     if a.action == "list":
         return emit({"forecasts": [{k: r.get(k) for k in ("id", "question", "resolve_by", "p_final", "outcome")}
@@ -452,10 +463,12 @@ def parser():
     with_session(sub.add_parser("finish")).set_defaults(fn=cmd_finish)
 
     sp = sub.add_parser("forecast")
-    sp.add_argument("action", choices=["add", "resolve", "list", "score", "fit"])
+    sp.add_argument("action", choices=["add", "resolve", "list", "score", "fit", "status", "import", "export"])
     sp.add_argument("--id")
     sp.add_argument("--outcome", type=int, choices=[0, 1])
-    sp.add_argument("--file", help="record JSON for add: a path, or - for stdin (the default)")
+    sp.add_argument("--event-id", help="idempotency key for add or resolve retries")
+    sp.add_argument("--file", help="add: record JSON path or - for stdin (default); import: JSONL path "
+                                   "(default <data>/forecasts.jsonl); export: output path or - for stdout")
     sp.set_defaults(fn=cmd_forecast)
     return p
 
