@@ -1,6 +1,8 @@
-# Colosseum
+<p align="center">
+  <img src="assets/logo.webp" alt="Colosseum" width="480">
+</p>
 
-[한국어](README.ko.md)
+<p align="center">[한국어](README.ko.md)</p>
 
 Colosseum is an agent skill that checks a contested question with several independent AI agents and keeps only the conclusions that survive verified evidence.
 
