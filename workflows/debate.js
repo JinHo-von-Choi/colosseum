@@ -535,6 +535,7 @@ const LIB = (() => {
 //   max_rounds : optional, default 3 (never above 3)
 //   budget     : optional {search: 25, fetch: 15}
 //   run_id     : optional id of the run opened by colosseum.py start (recorded in the graph)
+//   relay      : optional path of scripts/relay.py, passed to colosseum:cli-proxy
 // ---------------------------------------------------------------------------
 
 const A = args || {}
@@ -577,7 +578,7 @@ async function turn(p, role, body, schema, phaseName) {
   const prompt = PRIME + '\n\n당신의 익명 라벨: ' + p.label + ' | 역할: ' + role + '\n\n' + body
   if (p.cli) {
     const fields = Object.keys(schema.properties).join(', ')
-    return agent('CLI: ' + p.cli + '\n\n아래 프롬프트 끝에 "JSON 객체 하나로만 답하라. 필드: ' + fields + '"를 덧붙여 이 CLI에 전달하고, CLI가 돌려준 JSON을 스키마에 맞춰 반환하라. CLI는 검색할 수 없으므로 참고 자료 안의 URL과 인용만 쓸 수 있다.\n\n----- PROMPT -----\n' + prompt, { agentType: 'colosseum:cli-proxy', schema, phase: phaseName, label: p.label + ':' + role })
+    return agent('CLI: ' + p.cli + (A.relay ? '\nRELAY: ' + A.relay : '') + '\n\n아래 프롬프트 끝에 "JSON 객체 하나로만 답하라. 필드: ' + fields + '"를 덧붙여 이 CLI에 전달하고, CLI가 돌려준 JSON을 스키마에 맞춰 반환하라. CLI는 검색할 수 없으므로 참고 자료 안의 URL과 인용만 쓸 수 있다.\n\n----- PROMPT -----\n' + prompt, { agentType: 'colosseum:cli-proxy', schema, phase: phaseName, label: p.label + ':' + role })
   }
   return agent(prompt, { agentType: 'colosseum:participant', schema, phase: phaseName, label: p.label + ':' + role })
 }
@@ -922,7 +923,7 @@ async function jurorCall(first, second, iss, order) {
   const rel = relations.filter((r) => r.to === first.id || r.to === second.id).length
   const prompt = '쟁점: ' + iss.question + '\n\n첫째 주장: ' + side(first) + '\n\n둘째 주장: ' + side(second) + '\n\n(두 주장에 대한 공격 관계 수: ' + rel + ')\n검증된 증거만 근거로 어느 주장이 더 잘 뒷받침되는지 판정하라. 미확인 인용은 증거가 아니다. 길이나 말투는 무시하라.'
   const opts = { schema: S_JUROR, phase: 'Verdict', label: 'juror:' + order }
-  if (cliJuror) return agent('CLI: ' + cliJuror + '\n\n아래 프롬프트를 이 CLI에 그대로 전달하고, CLI가 돌려준 판정을 스키마에 맞춰 반환하라.\n\n----- PROMPT -----\n' + prompt, Object.assign(opts, { agentType: 'colosseum:cli-proxy' }))
+  if (cliJuror) return agent('CLI: ' + cliJuror + (A.relay ? '\nRELAY: ' + A.relay : '') + '\n\n아래 프롬프트를 이 CLI에 그대로 전달하고, CLI가 돌려준 판정을 스키마에 맞춰 반환하라.\n\n----- PROMPT -----\n' + prompt, Object.assign(opts, { agentType: 'colosseum:cli-proxy' }))
   return agent(prompt, Object.assign(opts, { agentType: 'colosseum:participant' }))
 }
 const jury = await parallel(issues.map((iss) => async () => {

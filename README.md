@@ -91,13 +91,17 @@ Every hook is a no-op unless the current session has a running Colosseum run. Wi
 - Python 3.9 or later for the scripts (optional; without it the skill runs in manual mode)
 - Optional AI CLIs for a heterogeneous roster:
 
-| CLI | Install | Invocation used |
-|-----|---------|-----------------|
-| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `npm install -g @google/gemini-cli` | `gemini -p "<prompt>"` |
-| [llm](https://github.com/simonw/llm) | `pip install llm` | `llm < prompt.txt` |
-| [aichat](https://github.com/sigoden/aichat) | `cargo install aichat` | `aichat "<prompt>"` |
+| CLI | Install | How Colosseum runs it |
+|-----|---------|-----------------------|
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `npm install -g @google/gemini-cli` | `gemini`, prompt on stdin |
+| [llm](https://github.com/simonw/llm) | `pip install llm` | `llm`, prompt on stdin |
+| [aichat](https://github.com/sigoden/aichat) | `cargo install aichat` | `aichat`, prompt on stdin |
 
-Data disclosure: when external CLIs are used, the question and the debate prompts are sent to those CLIs' model providers. Search queries go to the configured search tool. Prompts are written to a temporary file through a quoted heredoc before being passed to a CLI, so question text is never interpreted by the shell.
+CLIs are run by `scripts/relay.py` with a fixed argument list; the prompt goes to the CLI's stdin from a file written in a private directory, so no prompt text ever reaches a shell. The relay enforces a timeout (the CLI's whole process group is killed), caps the output and deletes the prompt afterwards.
+
+Data disclosure: when external CLIs are used, the question and the debate prompts are sent to those CLIs' model providers. A CLI is not added just because it is installed: the run plan names the providers first, and questions that contain repository code, internal documents or personal data need the user's approval. Search queries go to the configured search tool.
+
+Local records: each run keeps its files under `<data>/sessions/<session>/runs/<run_id>/` (directories 0700, files 0600 on POSIX). The source log stores an event id, the tool, success, latency when reported, URLs with credentials removed, and hashes of the query and response. Raw query and response text is kept only with `COLOSSEUM_DEBUG_LOG=1`, and is redacted there too; delete a run's directory to remove its records.
 
 ## Installation
 
@@ -108,18 +112,23 @@ From this repository as a plugin marketplace:
 /plugin install colosseum@colosseum
 ```
 
-Via the official plugin directory:
-
-```bash
-/plugin install colosseum@claude-plugins-official
-```
-
-Manual (symlinks the skill directory into `~/.claude/skills`; hooks and the participant agent need the plugin install):
+Manual install, which links the skill directory into `~/.claude/skills`:
 
 ```bash
 git clone https://github.com/JinHo-von-Choi/colosseum
-cd colosseum && ./install.sh
+cd colosseum && ./install.sh               # or ./install.sh --ref <tag or commit> to pin a version
 ```
+
+`install.sh` never overwrites anything it did not create: an existing file, directory, link to another place or broken link at the destination stops it with a message and nothing changes. To roll back, run `./install.sh --ref <earlier tag or commit>`.
+
+| | Plugin install | Manual install |
+|---|---|---|
+| Workflows (`colosseum:debate` and the modes) | yes | no (script or manual mode) |
+| Hooks (budgets, blind-draft messaging block, source log, turn repair) | yes | no |
+| `colosseum:participant`, `colosseum:cli-proxy` agents | yes | no (general-purpose agents) |
+| Without Python | manual mode only | manual mode only |
+
+Tested on Linux only. macOS and Windows are not listed as supported until they are tested; on platforms without `fcntl` the scripts refuse to open a run.
 
 ## Usage
 

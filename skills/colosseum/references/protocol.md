@@ -73,22 +73,21 @@ Claude 서브에이전트끼리는 모델 계열이 같아 오류도 비슷하�
 
 ### 2.2 외부 CLI
 
-프롬프트는 반드시 따옴표 친 heredoc으로 임시 파일에 쓴 뒤 전달한다.
+프롬프트는 셸 명령에 넣지 않는다. heredoc 종료자, `$( )`, 따옴표, 줄바꿈이 프롬프트에 들어 있으면 셸 템플릿 밖으로 빠져나올 수 있기 때문이다. 대신 `scripts/relay.py`가 허용된 CLI를 고정 인자 배열로 실행하고 프롬프트를 표준입력으로 넘긴다.
+
+1. `python3 "${CLAUDE_SKILL_DIR}/scripts/relay.py" mktemp`로 전용 디렉터리(0700)를 만든다.
+2. Write 도구로 프롬프트 전문을 그 디렉터리의 `prompt.txt`에 쓴다.
+3. 실행한다.
 
 ```bash
-COLO_DIR="$(mktemp -d)"
-cat > "$COLO_DIR/prompt.txt" <<'COLOSSEUM_EOF'
-(여기에 프롬프트 전문)
-COLOSSEUM_EOF
-
-gemini -p "$(cat "$COLO_DIR/prompt.txt")"   # Gemini CLI headless 모드
-llm < "$COLO_DIR/prompt.txt"                  # llm: stdin을 프롬프트로 사용
-aichat "$(cat "$COLO_DIR/prompt.txt")"        # aichat
+python3 "${CLAUDE_SKILL_DIR}/scripts/relay.py" run --cli gemini --prompt-file "<dir>/prompt.txt" --timeout 180 --cleanup
 ```
 
-- Bash 도구 호출에 timeout 180000ms를 지정한다. 시간 초과나 비정상 종료는 그 단계의 발언 없음으로 기록한다.
-- 모든 호출이 끝나면 `rm -rf "$COLO_DIR"`로 지운다.
-- 사용자 질문은 외부 CLI 제공자에게 전송된다. 사용자가 CLI 사용을 원하지 않으면 CLI 없이 진행한다.
+- 허용된 CLI는 `gemini`, `llm`, `aichat`뿐이다. 다른 이름이나 설치되지 않은 CLI는 실행 전에 실패한다.
+- relay는 시간 초과 시 CLI의 프로세스 그룹 전체를 종료하고, 출력은 200,000바이트에서 자르며, `--cleanup`으로 프롬프트 디렉터리를 지운다. relay 자체가 중단되어도 CLI 프로세스를 함께 종료한다.
+- 프롬프트 파일은 `relay.py mktemp`가 만든 디렉터리 안에 있어야 한다. 다른 파일을 외부로 보내지 않기 위해서다.
+- 결과 JSON의 `ok`가 false이거나 `timed_out`이 true면 그 단계의 발언 없음으로 기록한다.
+- 사용자 질문과 토론 프롬프트는 외부 CLI 제공자에게 전송된다. CLI가 설치되어 있다는 이유만으로 자동 채택하지 않는다. 실행 계획에 제공자와 전송 범위를 보이고, 사용자가 원하지 않으면 CLI 없이 진행한다. 민감한 저장소 내용이나 개인정보는 사용자가 승인한 범위에서만 보낸다.
 
 ### 2.3 CLI 참가자의 검색 대행
 

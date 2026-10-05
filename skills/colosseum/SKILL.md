@@ -92,8 +92,8 @@ COLOSSEUM_JSON
 
    확률 예측은 해소 기준과 해소 시점이 명확해야 한다. 질문에서 정할 수 없으면 사용자에게 물어서 정한다. `extremize`는 `CTL forecast fit`의 `a` 값을 쓴다(기록이 부족하면 1.0). `forecast_id`는 `AS_OF`와 질문 요약으로 만든다.
 2. `python3`와 Bash가 있으면 아래 "실행 열기"대로 실행을 연다. 훅의 예산 강제와 출처 기록이 이때부터 작동한다.
-3. 명단을 만든다. 참가자는 3명이고 라벨 A, B, C를 무작위 순서로 배정한다. 위 도구 목록에 외부 CLI가 있으면 [references/protocol.md](references/protocol.md) §1.3 규칙대로 넣는다. 각 항목은 `{"label": "A", "family": "claude"}` 또는 `{"label": "B", "family": "gemini", "cli": "gemini"}` 형태다. debate에서는 명단에 넣지 않은 CLI를 `cli_juror`로 지정한다.
-4. 고른 워크플로를 Workflow 도구로 호출한다. 공통 args는 `{"question": 원문 질문, "as_of": "YYYY-MM-DD", "stakes": ..., "roster": [...], "run_id": start가 돌려준 run_id}`이고, 표의 추가 args를 더한다. 이 스킬을 호출한 것 자체가 워크플로 실행에 대한 사용자의 동의다.
+3. 명단을 만든다. 참가자는 3명이고 라벨 A, B, C를 무작위 순서로 배정한다. 위 도구 목록에 외부 CLI가 있으면 [references/protocol.md](references/protocol.md) §1.3 규칙대로 넣을 수 있다. 넣기 전에 어느 제공자에게 질문과 토론 프롬프트가 전송되는지 실행 계획에 밝히고, 질문에 저장소 코드, 내부 문서, 개인정보가 들어 있으면 사용자의 승인을 받은 뒤에만 넣는다. 각 항목은 `{"label": "A", "family": "claude"}` 또는 `{"label": "B", "family": "gemini", "cli": "gemini"}` 형태다. debate에서는 명단에 넣지 않은 CLI를 `cli_juror`로 지정한다.
+4. 고른 워크플로를 Workflow 도구로 호출한다. 공통 args는 `{"question": 원문 질문, "as_of": "YYYY-MM-DD", "stakes": ..., "roster": [...], "run_id": start가 돌려준 run_id, "relay": "${CLAUDE_SKILL_DIR}/scripts/relay.py"}`이고, 표의 추가 args를 더한다. 이 스킬을 호출한 것 자체가 워크플로 실행에 대한 사용자의 동의다.
 5. 워크플로는 백그라운드에서 돈다. 완료 알림을 기다리고, 그동안 결과를 추측해 쓰지 않는다.
 6. 결과의 `report`를 사용자에게 그대로 보여 준다. 다시 요약하거나 고쳐 쓰지 않는다.
 7. `python3`가 있으면 마무리한다.
