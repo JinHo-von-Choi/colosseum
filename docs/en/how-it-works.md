@@ -5,6 +5,7 @@
 | Phase | What happens |
 |-------|--------------|
 | 0. Plan | Classify the question, set stakes and the reference date, build the roster |
+| 0.5 Materials | Read the files, directories, URLs or text the user supplied; summaries and key passages go to every participant |
 | 1. Fact base | Three searches from different angles (for, against, current state); key facts are kept with URL and quote |
 | 2. Blind drafts | Each participant writes a position, claims with URL and quote, key assumptions, cruxes and a probability, without seeing the others |
 | 2a. Baseline | Family-weighted vote and pooled probability `P0` |

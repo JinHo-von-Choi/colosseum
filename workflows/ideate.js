@@ -3,6 +3,7 @@ export const meta = {
   description: 'Colosseum creative mode (experimental): nominal group technique with silent generation, merge, blind ranking and Borda count',
   whenToUse: 'Launched by the colosseum skill for idea generation and naming; not for direct use',
   phases: [
+    { title: 'Materials', detail: 'read the materials the user supplied' },
     { title: 'Generate', detail: 'silent parallel idea generation' },
     { title: 'Merge', detail: 'remove duplicates, keep sources' },
     { title: 'Rank', detail: 'independent blind rankings' },
@@ -569,6 +570,33 @@ async function turn(p, role, body, schema, phaseName) {
   return agent(prompt, { agentType: 'colosseum:participant', schema, phase: phaseName, label: p.label + ':' + role })
 }
 
+// ---- user materials ----
+// Files, directories, URLs or text the user asked the review to read first. The skill
+// snapshots files and text into the run (colosseum.py materials add) and passes the
+// manifest as args.materials: [{id, kind, title, path?, url?}]. Every participant gets a
+// digest of each material; Claude participants can also Read the snapshot itself.
+const MATERIALS = (Array.isArray(A.materials) ? A.materials : []).filter((m) => m && m.id && (m.path || m.url)).slice(0, 30)
+const materialById = Object.fromEntries(MATERIALS.map((m) => [m.id, m]))
+let MATERIALS_TEXT = ''
+const S_DIGEST = { type: 'object', properties: { summary: { type: 'string' }, passages: { type: 'array', maxItems: 8, items: { type: 'object', properties: { quote: { type: 'string' }, locator: { type: 'string' } }, required: ['quote'] } } }, required: ['summary', 'passages'] }
+
+async function readMaterials(question) {
+  if (!MATERIALS.length) return ''
+  const digests = await parallel(MATERIALS.map((m) => () => {
+    if (m.url) fetchesUsed++
+    const how = m.path ? 'Read 도구로 이 파일을 처음부터 끝까지 읽어라: ' + m.path : 'WebFetch로 이 페이지를 읽어라: ' + m.url
+    return agent('사용자가 이 검토에서 먼저 읽으라고 지정한 자료다. ' + how + '\n\n질문: ' + question + '\n\n질문과 관련된 내용을 150단어 이내로 요약하라. 판단에 쓸 만한 구절은 원문 그대로(50단어 이하) 최대 8개 골라 위치(줄 번호, 절 제목 등)와 함께 적어라. 자료에 없는 내용을 지어내지 마라.', { agentType: 'colosseum:participant', schema: S_DIGEST, phase: 'Materials', label: 'material:' + m.id })
+  }))
+  MATERIALS_TEXT = '[사용자 자료] 아래 자료를 먼저 읽고, 일반론이 아니라 이 자료의 내용에 근거해 논의하라. 파일이나 붙여 넣은 글을 인용할 때는 url에 material:자료ID(예: material:M1)를, quote에 원문 그대로를 넣는다. 웹 자료는 그 URL을 그대로 쓴다. 자료와 다른 주장을 하려면 그 근거를 따로 대라.\n' + MATERIALS.map((m, i) => {
+    const d = digests[i]
+    const where = m.path ? '파일 사본: ' + m.path + ' (인용 표기 material:' + m.id + ')' : 'URL: ' + m.url
+    if (!d) return '[' + m.id + '] ' + (m.title || m.id) + ' | ' + where + '\n  (읽지 못함)'
+    return '[' + m.id + '] ' + (m.title || m.id) + ' | ' + where + '\n  요약: ' + d.summary + '\n  핵심 구절: ' + (d.passages || []).map((p) => '"' + p.quote + '"' + (p.locator ? ' (' + p.locator + ')' : '')).join(' / ')
+  }).join('\n')
+  log('사용자 자료 ' + MATERIALS.length + '건을 읽음')
+  return MATERIALS_TEXT
+}
+
 // ---- evidence: page acquisition, quote checks and support assessments ----
 // One evidence record binds one quote to one claim. Three caches keep their own keys:
 //   acquisitions : normalized URL + quote -> page passage or snippet, source fields (fetched once)
@@ -613,6 +641,20 @@ function acquire(url, quote, claimText, phaseName) {
   acquisitions[key] = (async () => {
     const acq = { key, acquisition: 'unavailable', text: '', source: { reliability: 'low', freshness: 'unknown' }, note: null, assessed: null }
     const judged = (r) => ({ claimHash: textHash(claimText), support: r.support, support_reason: r.support_reason || '' })
+    if (String(url).startsWith('material:')) {
+      // A user-supplied file or text: read the run's snapshot, no fetch budget. The skill
+      // re-checks these quotes against the snapshot deterministically afterwards.
+      const m = materialById[String(url).slice(9)]
+      if (!m || !m.path) { acq.note = 'unknown material'; return acq }
+      const r = await agent('Read 도구로 이 파일을 읽어라: ' + m.path + '\n다음 구절이나 거의 같은 구절이 있으면 그 구절을 passage에, 그 구절이 든 문장 전체와 앞뒤 한 문장을 context에 원문 그대로 넣어라. 없으면 둘 다 빈 문자열이다. fetch_failed는 파일을 읽지 못했을 때만 true다. reliability는 high, origin은 material:' + m.id + '로 둔다.\n' + SUPPORT_RUBRIC + '\n\n주장: ' + claimText + '\n인용: ' + quote, { agentType: 'colosseum:participant', schema: S_CHECK, phase: phaseName, label: 'read:' + m.id, effort: 'low' })
+      acq.source = { reliability: 'high', origin: 'material:' + m.id, publisher: m.title, freshness: 'na' }
+      if (r && !r.fetch_failed) {
+        acq.acquisition = 'material'
+        acq.text = r.context && r.context.includes(r.passage || '') ? r.context : (r.passage || '') + (r.context ? '\n' + r.context : '')
+        acq.assessed = judged(r)
+      } else acq.note = 'material could not be read'
+      return acq
+    }
     let fetchFailed = false
     if (!degraded && fetchesUsed < FETCH_BUDGET) {
       fetchesUsed++
@@ -679,6 +721,7 @@ async function checkEvidence(url, quote, claimText, phaseName, claimId) {
   const m = LIB.matchQuote(quote, acq.text)
   e.match = { matcher: m.matcher, reason: m.reason, span: m.span || null, score: m.score, content_hash: textHash(acq.text) }
   // A snippet proves only what its own text contains, and only verbatim.
+  if (acq.acquisition === 'material') e.material = String(url).slice(9)
   e.quote_status = acq.acquisition === 'snippet' ? (m.status === 'v' ? 'snippet' : m.status === 'n' ? 'n' : 'u') : m.status
   if (e.quote_status === 'u') return e
   e.assessment_key = [claimId || '', claimHash, e.quote_key, e.match.content_hash, LIB.POLICY_VERSION].join('|')
@@ -697,7 +740,7 @@ const isChecked = (e) => !!e && LIB.eligible(e)
 
 // How each piece of evidence was obtained; the report states this instead of one global mode.
 function verificationSummary() {
-  const out = { full_page: 0, snippet: 0, unavailable: 0, review_required: 0 }
+  const out = { full_page: 0, material: 0, snippet: 0, unavailable: 0, review_required: 0 }
   for (const e of evidence) {
     if (out[e.acquisition] !== undefined) out[e.acquisition]++
     if (e.quote_status === 'n') out.review_required++
@@ -707,18 +750,19 @@ function verificationSummary() {
 }
 
 async function buildFactBase(question, asOf, extra) {
-  const facts = await agent('[Prime Directive] 사실적 정확성이 유일한 기준이다.\n질문: ' + question + '\n기준 시점: ' + asOf + '\n\n세 방향으로 WebSearch를 한 번씩 하라: 찬성 근거, 반대 근거, 최신 현황. 논쟁적 공적 주장이면 기존 팩트체크 기사부터 찾는다. ' + (extra || '') + '판정에 중요한 사실 3-6개를 골라 각각 URL과 검색 결과에 나온 50단어 이하 원문 구절을 적어라. 구절을 지어내지 마라.', { schema: S_FACTS, phase: 'Fact base', label: 'fact-base' })
+  const facts = await agent('[Prime Directive] 사실적 정확성이 유일한 기준이다.\n질문: ' + question + '\n기준 시점: ' + asOf + (MATERIALS_TEXT ? '\n\n' + MATERIALS_TEXT + '\n\n사용자 자료가 답하지 않거나 자료와 어긋나는 공개 근거를 우선 찾아라.' : '') + '\n\n세 방향으로 WebSearch를 한 번씩 하라: 찬성 근거, 반대 근거, 최신 현황. 논쟁적 공적 주장이면 기존 팩트체크 기사부터 찾는다. ' + (extra || '') + '판정에 중요한 사실 3-6개를 골라 각각 URL과 검색 결과에 나온 50단어 이하 원문 구절을 적어라. 구절을 지어내지 마라.', { schema: S_FACTS, phase: 'Fact base', label: 'fact-base' })
   const list = (facts && facts.facts) || []
   const evs = await checkClaims(list.map((f) => ({ text: f.claim, url: f.url, quote: f.quote })), 'Fact base')
-  const text = list.map((f, i) => '[F' + (i + 1) + '] ' + f.claim + ' | ' + f.url + ' | "' + f.quote + '" | 대조: ' + (evs[i] ? evs[i].quote_status : 'u')).join('\n')
+  const text = (MATERIALS_TEXT ? MATERIALS_TEXT + '\n\n[공개 자료]\n' : '') + list.map((f, i) => '[F' + (i + 1) + '] ' + f.claim + ' | ' + f.url + ' | "' + f.quote + '" | 대조: ' + (evs[i] ? evs[i].quote_status : 'u')).join('\n')
   return { list, evs, text, raw: facts }
 }
 // ==== colosseum-runtime end ====
 
 // ============================================================================
+if (MATERIALS.length) { phase('Materials'); await readMaterials(A.question) }
 phase('Generate')
 const S_IDEAS = { type: 'object', properties: { ideas: { type: 'array', maxItems: PER, items: { type: 'object', properties: { title: { type: 'string' }, description: { type: 'string' } }, required: ['title', 'description'] } } }, required: ['ideas'] }
-const gen = (await parallel(A.roster.map((p) => () => turn(p, 'ideator', '과제: ' + A.question + '\n판단 기준: ' + CRITERIA + '\n\n서로 확실히 다른 아이디어를 ' + PER + '개 내라. 다른 참가자의 아이디어는 보이지 않는다. 검색은 필요할 때만 한다.', S_IDEAS, 'Generate').then((d) => (d ? { p, ideas: d.ideas || [] } : null))))).filter(Boolean)
+const gen = (await parallel(A.roster.map((p) => () => turn(p, 'ideator', '과제: ' + A.question + '\n판단 기준: ' + CRITERIA + (MATERIALS_TEXT ? '\n\n' + MATERIALS_TEXT : '') + '\n\n서로 확실히 다른 아이디어를 ' + PER + '개 내라. 다른 참가자의 아이디어는 보이지 않는다. 검색은 필요할 때만 한다.', S_IDEAS, 'Generate').then((d) => (d ? { p, ideas: d.ideas || [] } : null))))).filter(Boolean)
 if (gen.length < 2) throw new Error('fewer than 2 participants produced ideas')
 const raw = gen.flatMap((g) => g.ideas.map((idea, i) => ({ ref: g.p.label + (i + 1), title: idea.title, description: idea.description })))
 
@@ -743,6 +787,7 @@ const result = LIB.borda(ballots.map((b) => b.ranking))
 phase('Report')
 const data = {
   status: 'experimental',
+  materials: MATERIALS.map((m) => ({ id: m.id, title: m.title, kind: m.kind })),
   question: A.question, criteria: CRITERIA, roster: gen.map((g) => ({ label: g.p.label, family: g.p.family })),
   roster_kind: new Set(A.roster.map((p) => p.family)).size < 2 ? '동종 명단' : '이질 명단',
   generated: raw.length, merged: pool, ballots, borda: result.map((r) => Object.assign({}, r, pool.find((m) => m.id === r.id))),

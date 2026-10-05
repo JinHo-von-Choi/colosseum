@@ -23,7 +23,7 @@
 |------|----|
 | `url` | 인용한 원래 URL |
 | `url_normalized` | 정규화한 URL: 소문자 scheme과 host, IDNA(punycode) host, 기본 포트 제거, fragment 제거. 정규화는 문자열 비교용이며 출처 독립성 판단을 대신하지 않는다 |
-| `acquisition` | `full_page`(페이지를 가져옴), `snippet`(검색 스니펫만 있음), `unavailable`(어느 쪽도 없음) |
+| `acquisition` | `full_page`(페이지를 가져옴), `material`(사용자 자료의 고정 사본), `snippet`(검색 스니펫만 있음), `unavailable`(어느 쪽도 없음) |
 | `reliability`, `origin`, `publisher`, `published`, `freshness` | 출처 속성. `freshness`를 판단할 수 없으면 `unknown`이며 최신으로 가정하지 않는다 |
 | `match.content_hash` | 대조에 쓴 원문 텍스트의 해시 |
 

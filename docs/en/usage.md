@@ -19,6 +19,30 @@ Better questions get better reviews:
 - Give the date the answer should hold for ("as of 2026-10") when facts change over time.
 - For forecasts, state how the question resolves and by when. Colosseum asks if these are missing.
 
+## Giving it your materials
+
+Without material, participants argue from general knowledge. Point Colosseum at what matters for your case and every participant reads it before drafting:
+
+```
+colosseum: read docs/queue-proposal.md, src/poller/ and https://example.org/rfc-42, then decide whether we should adopt the queue
+```
+
+| You can give | How it is used |
+|--------------|----------------|
+| A file | Copied into the run as a fixed snapshot |
+| A directory | Every text file in it, skipping binaries, hidden files and folders such as `.git` and `node_modules` |
+| A URL | Read with the page fetch tool |
+| Pasted text | Saved as a snapshot, like a file |
+
+What happens:
+
+1. Each material gets a short summary and up to eight verbatim passages with their location. Every participant, including external agents, gets these before the debate.
+2. Participants must argue from the materials. A claim that contradicts a material has to bring its own evidence.
+3. The fact-base search looks first for public evidence the materials leave open or contradict.
+4. Quotes from files and pasted text are cited as `material:M1` and checked against the snapshot, word for word, with the same rules as web quotes.
+
+Limits: 30 materials, 300 KB per file, 2 MB in total. If the question is about your own code or system and you gave no material, Colosseum asks which files to include. Material summaries and quotes are sent to external agents' providers, so it asks before sending internal documents or code.
+
 ## Choosing participants
 
 By default the roster has three participants. Installed AI agent CLIs from other model families take up to two seats; the host's own model fills the rest. You can steer this in the request:
@@ -40,6 +64,7 @@ Before anything is sent to an external agent, Colosseum names the providers that
 | Conflict verdicts | The engine's verdict per issue and the juror's ruling in both orders. "Order-sensitive" means the juror changed its mind when the sides were swapped. |
 | Unresolved issues | Conditional answers: "if X holds, A; otherwise B". |
 | Final answer | Every factual claim carries a source ID. `P_final` is marked UNCALIBRATED. |
+| Your materials | Each material and how the final answer used or contradicted it |
 | Sources | For each quote: how the page was obtained, the check result and the reason, and whether the quote supports the claim. |
 | Checklist | Share of claims backed by verified quotes, source quality, independent sources per decisive claim. There is no single score. |
 

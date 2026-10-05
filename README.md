@@ -10,11 +10,12 @@ Use it to fact-check a claim, compare technical options (a library, an architect
 
 ## How it works
 
-1. Each participant drafts an answer without seeing the others.
-2. Before any debate, Colosseum records a vote over the drafts and a pooled probability. This is the baseline.
-3. Participants attack the claims that decide the answer. Every factual attack must cite a URL and a verbatim quote, and the quote is checked against the page.
-4. A deterministic engine computes the verdict from the claims, the evidence and the attacks. The answer can depart from the baseline only when verified evidence, a failed rebuttal and an independent juror all agree.
-5. The report shows the baseline, each round, every source with its check result, and the open questions. Ties are reported as conditional answers, never as consensus.
+1. If you point it at materials (files, a directory, URLs or pasted text), every participant reads them first, so the debate is about your case, not the general topic.
+2. Each participant drafts an answer without seeing the others.
+3. Before any debate, Colosseum records a vote over the drafts and a pooled probability. This is the baseline.
+4. Participants attack the claims that decide the answer. Every factual attack must cite a URL and a verbatim quote, and the quote is checked against the page.
+5. A deterministic engine computes the verdict from the claims, the evidence and the attacks. The answer can depart from the baseline only when verified evidence, a failed rebuttal and an independent juror all agree.
+6. The report shows the baseline, each round, every source with its check result, and the open questions. Ties are reported as conditional answers, never as consensus.
 
 Participants can come from different model families. Colosseum finds the AI agent CLIs installed on your machine (Codex, Gemini CLI, Kimi Code, MiniMax Code, OpenCode, Hermes Agent, OpenClaw and others) and uses them next to the host's own model.
 
@@ -39,7 +40,13 @@ colosseum: Should our team move from REST polling to a message queue?
 
 Trigger words: `colosseum`, `팩트체크`, `AI 토론`, `여러 AI에게 물어봐`, `비판적으로 분석`, `다양한 관점`.
 
-To use specific agents, name them in the request: "colosseum, use codex and kimi: ...".
+To ground the review in your own material, name it in the request:
+
+```
+colosseum: read docs/queue-proposal.md and src/poller/, then decide whether we should adopt the queue
+```
+
+To use specific agents, name them: "colosseum, use codex and kimi: ...".
 
 ## What you get
 
@@ -62,7 +69,7 @@ Tested on Linux. On systems without `fcntl` the scripts refuse to start a run.
 
 | Guide | Contents |
 |-------|----------|
-| [Usage](docs/en/usage.md) | question types, reading the report, decision records, what-if, forecasts, resuming a run |
+| [Usage](docs/en/usage.md) | question types, your materials, reading the report, decision records, what-if, forecasts, resuming a run |
 | [External agents](docs/en/agents.md) | supported agents, detection, roster rules, adding your own agent, privacy |
 | [How it works](docs/en/how-it-works.md) | phases, quote checks, evidence rules, the verdict engine |
 | [Reference](docs/en/reference.md) | commands, environment variables, data files and formats |

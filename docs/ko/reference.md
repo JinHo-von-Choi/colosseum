@@ -15,6 +15,8 @@
 | `restart --session S [--question-file -]` | 현재 실행을 중단 상태로 닫고 새 실행을 연다 |
 | `cancel --session S`, `fail --session S --reason TEXT`, `finish --session S` | 실행을 취소, 실패, 완료로 닫는다 |
 | `runs --session S` | 세션의 실행 목록 |
+| `materials add --session S [--file -]` | 자료를 실행에 고정한다. 입력: `{"materials": [{"path": ...} \| {"url": ...} \| {"text": ..., "title": ...}]}`. 출력의 `workflow_arg`를 워크플로의 `materials` 인자로 넘긴다 |
+| `materials list --session S` | 실행의 자료 목록 |
 | `status --session S` | 단계, 라운드, 예산 사용량, 다음에 갈 수 있는 단계 |
 | `advance --session S --to PHASE` | 다음 단계로 이동: `fact_base`, `drafts`, `baseline`, `issues`, `round`, `verdict`, `done` |
 | `round-result --session S --verified-changes N --open-issues N [--conformity-flips N]` | 라운드 결과를 기록하고, 다음 라운드를 허용할지 정한다 |
@@ -28,7 +30,7 @@
 |------|------|------|
 | `quote --stdin` | `{"id", "quote", "page"}` | `v`, `n`, `u`와 사유, 일치 위치 |
 | `baseline [--extremize A]` | `drafts.json` | 투표, `P0`, 토론 생략 여부와 반대자 필요 여부 |
-| `verdict [--theta T]` | `graph.json` | 라벨, 상태, 강도, 충돌 판정 |
+| `verdict [--theta T]` | `graph.json` | 라벨, 상태, 강도, 충돌 판정. `material_checks`에는 사본과 다시 대조해 상태가 바뀐 자료 인용이 나온다 |
 | `metrics` | `graph.json` | 증거 품질 점검표 |
 | `whatif --exclude-evidence E \| --unprove-claim C` | `graph.json` | 바뀐 것과 변화가 퍼진 관계 |
 | `adr [--status S] [--out DIR]` | debate 워크플로 결과 | `decision.md`와 `decision.json` |
@@ -74,6 +76,8 @@
   sessions/<session>/
     state.json                현재 실행의 체크포인트
     runs/<run_id>/            실행 하나가 만든 모든 파일
+      materials.json          자료 목록과 사본별 SHA-256
+      materials/M1.txt        자료 사본
       drafts.json, graph.json, baseline.json, verdict.json, result.json
       decision.md, decision.json
       quotes.jsonl            인용 대조 기록
@@ -124,6 +128,7 @@
 | `quote_status` | `v`, `snippet`, `n`, `u` |
 | `support` | `full`, `partial`, `none`, `unknown` (이 주장 기준) |
 | `freshness` | `fresh`, `stale`, `superseded`, `na`(시점 무관), `unknown` |
+| `url` | 페이지 URL. 사용자가 준 파일이나 붙여 넣은 글은 `material:M1` |
 | `origin` | 원출처 ID. 사본들은 같은 값을 쓴다. 비우면 URL 호스트로 묶는다 |
 | `kind` | `fact`, `statistic`, `causal`, `forecast`, `value`, `recommendation` |
 | `status` | `active` 또는 `withdrawn` |

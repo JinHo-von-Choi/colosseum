@@ -6,6 +6,7 @@
 
 First stable release. Version numbers restart here; the versions below were published under the earlier numbering.
 
+- Reads the materials you point it at (files, directories, URLs, pasted text) before the debate, so participants argue about your case. Quotes from files are checked against a fixed snapshot.
 - Blind drafts from independent agents, a vote baseline recorded before the debate, quote-checked evidence rounds and a deterministic verdict engine.
 - Quote checks that catch changed numbers, signs, negations, comparisons and dropped conditions, with support judged per claim.
 - Uses the AI agent CLIs installed on the machine (Codex, Gemini CLI, Kimi Code, MiniMax Code, OpenCode, Hermes Agent, OpenClaw and others) as participants from other model families.

@@ -80,6 +80,24 @@ COLOSSEUM_JSON
 - 체크포인트 버전이 맞지 않는다는 거부가 나오면 `restart`만 가능하다.
 - 지난 실행의 파일을 다시 볼 때는 `CTL verdict --session ... --run <run_id>`처럼 `--run`을 명시한다.
 
+## 사용자 자료
+
+사용자가 검토에 쓸 자료를 지정했으면 토론 전에 읽힌다. 자료 없이 일반론으로 토론하지 않게 하기 위해서다.
+
+- 자료로 보는 것: 요청에 적힌 파일 경로와 디렉터리, URL, 첨부하거나 붙여 넣은 문서, "이 문서 기준으로", "이 저장소 보고" 같은 지시
+- 질문이 사용자의 코드나 시스템에 관한 것인데 자료를 지정하지 않았으면, 관련 파일이나 설계 문서를 넣을지 한 번 묻는다.
+- 실행을 연 직후 자료를 실행에 고정한다. 붙여 넣은 글은 `text`로 넣는다.
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/scripts/colosseum.py" --data "${CLAUDE_PLUGIN_DATA}" materials add --session "${CLAUDE_SESSION_ID}" --file - <<'COLOSSEUM_JSON'
+{"materials": [{"path": "docs/design.md"}, {"path": "src/queue"}, {"url": "https://example.org/rfc"}, {"text": "...", "title": "회의 메모"}]}
+COLOSSEUM_JSON
+```
+
+- 결과의 `workflow_arg`를 워크플로 args의 `materials`로 넘긴다. 워크플로가 자료를 먼저 읽고 요약과 핵심 구절을 모든 참가자에게 준다.
+- 파일과 붙여 넣은 글은 `material:M1` 형식으로 인용한다. `CTL verdict`가 이 인용을 실행에 고정된 사본과 다시 대조하고, 결과의 `material_checks`에 바뀐 판정을 적는다.
+- 외부 에이전트를 쓰면 자료 요약과 인용 구절도 그 제공자에게 전송된다. 저장소 코드나 내부 문서라면 넣기 전에 사용자 승인을 받는다.
+
 ## 워크플로 모드
 
 1. 질문을 파싱한다(TYPE, STAKES, AS_OF). TYPE에 따라 워크플로를 고른다. 질문 하나에 여러 유형이 섞이면 질문이 최종적으로 묻는 것을 기준으로 하나를 고른다.
@@ -110,7 +128,7 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/relay.py" --data "${CLAUDE_PLUGIN_DATA}" ro
 5. 워크플로는 백그라운드에서 돈다. 완료 알림을 기다리고, 그동안 결과를 추측해 쓰지 않는다.
 6. 결과의 `report`를 사용자에게 그대로 보여 준다. 다시 요약하거나 고쳐 쓰지 않는다.
 7. `python3`가 있으면 마무리한다.
-   - debate: 결과의 `graph`를 `CTL verdict --session ... --file -`에 heredoc으로 넘겨 Python 엔진으로 판정을 다시 계산한다. `conflicts[].verdict`가 결과의 `verdict.conflicts`와 다르면 보고서 끝에 "판정 교차 검증 불일치"를 덧붙인다.
+   - debate: 결과의 `graph`를 `CTL verdict --session ... --file -`에 heredoc으로 넘겨 Python 엔진으로 판정을 다시 계산한다. `conflicts[].verdict`가 결과의 `verdict.conflicts`와 다르면 보고서 끝에 "판정 교차 검증 불일치"를 덧붙인다. `material_checks`가 있으면 "자료 인용 재대조" 항목으로 바뀐 인용과 사유를 덧붙이고, 두 판정이 다르면 Python 판정을 따른다.
    - debate의 decision, technical 모드: 결과 전체(`data`, `graph`, `verdict`)를 `CTL adr --session ... --file -`에 heredoc으로 넘겨 결정 기록을 만든다. 실행 디렉터리에 `decision.md`(ADR)와 `decision.json`이 생긴다. 상태는 `proposed`로 두고, 채택, 보류, 추가 실험은 사용자가 정한다(사용자가 정하면 `--status accepted|rejected|deferred|needs-experiment`로 다시 만든다). PR 게시나 외부 공유는 사용자가 따로 요청할 때만 한다.
    - 사용자가 "이 출처를 빼면?", "이 주장이 입증되지 않았다면?"을 물으면 `CTL whatif --session ... --exclude-evidence <E번호>` 또는 `--unprove-claim <주장 ID>`로 모델 호출 없이 다시 계산해, 바뀐 판정과 그대로인 판정, 변화가 전파된 관계를 보여 준다. 한 번에 하나만 바꾼다. 이 결과는 고정된 그래프 위의 의존성 확인이지 현실에 대한 예측이 아니다.
    - forecast(확률): 결과의 `record`를 `CTL forecast add`에 heredoc으로 넘겨 예측 기록에 남긴다. 해소 시점이 지나면 `CTL forecast resolve --id <id> --outcome 0|1`로 결과를 기록하고, `CTL forecast score`로 Brier 점수와 보정 구간을 본다. 전송이 끊겨 다시 넣을 때는 같은 `--event-id`를 쓴다. `forecast add`가 "has not been imported"로 거부하면 `CTL forecast import`를 먼저 실행한다.
@@ -122,6 +140,7 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/relay.py" --data "${CLAUDE_PLUGIN_DATA}" ro
 | 단계 | 중재자가 할 일 | 명령 |
 |------|--------------|------|
 | 시작 | 질문을 파싱한다(TYPE, STAKES, AS_OF, 명단). 결과의 `run_id`와 `run_dir`을 기억한다 | 위 "실행 열기"의 `CTL start ... --question-file -` (heredoc) |
+| 자료 | 사용자 자료가 있으면 고정하고 직접 읽어 요약과 핵심 구절을 만든다. 이 요약을 모든 참가자 프롬프트의 맨 앞에 넣는다 | `CTL materials add --session ... --file -` (heredoc) |
 | Phase 1 | 사실 기반 검색 3회, 상위 페이지 가져오기, 인용 대조 | `CTL advance --session ... --to fact_base` |
 | Phase 2 | 참가자 3명을 병렬 호출해 초안(role: draft)을 받는다. 인용을 대조한다 | `CTL advance --session ... --to drafts` |
 | Phase 2a | 초안을 drafts 형식으로 정리해 기준선을 계산한다 | `CTL baseline --session ... --file -` (heredoc) |

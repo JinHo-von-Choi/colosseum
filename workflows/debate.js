@@ -3,6 +3,7 @@ export const meta = {
   description: 'Colosseum: blind drafts, vote baseline, quote-verified evidence rounds, computed verdicts',
   whenToUse: 'Launched by the colosseum skill with a prepared roster; not for direct use',
   phases: [
+    { title: 'Materials', detail: 'read the materials the user supplied' },
     { title: 'Fact base', detail: 'opposing-angle searches and source records' },
     { title: 'Drafts', detail: 'blind parallel drafts from the roster' },
     { title: 'Verify', detail: 'quote checks against fetched pages' },
@@ -537,6 +538,7 @@ const LIB = (() => {
 //   budget     : optional {search: 25, fetch: 15}
 //   run_id     : optional id of the run opened by colosseum.py start (recorded in the graph)
 //   relay      : optional path of scripts/relay.py, passed to colosseum:cli-proxy
+//   materials  : optional [{id, kind, title, path?, url?}] from colosseum.py materials add
 // ---------------------------------------------------------------------------
 
 const A = args || {}
@@ -584,6 +586,33 @@ async function turn(p, role, body, schema, phaseName) {
   return agent(prompt, { agentType: 'colosseum:participant', schema, phase: phaseName, label: p.label + ':' + role })
 }
 
+// ---- user materials ----
+// Files, directories, URLs or text the user asked the review to read first. The skill
+// snapshots files and text into the run (colosseum.py materials add) and passes the
+// manifest as args.materials: [{id, kind, title, path?, url?}]. Every participant gets a
+// digest of each material; Claude participants can also Read the snapshot itself.
+const MATERIALS = (Array.isArray(A.materials) ? A.materials : []).filter((m) => m && m.id && (m.path || m.url)).slice(0, 30)
+const materialById = Object.fromEntries(MATERIALS.map((m) => [m.id, m]))
+let MATERIALS_TEXT = ''
+const S_DIGEST = { type: 'object', properties: { summary: { type: 'string' }, passages: { type: 'array', maxItems: 8, items: { type: 'object', properties: { quote: { type: 'string' }, locator: { type: 'string' } }, required: ['quote'] } } }, required: ['summary', 'passages'] }
+
+async function readMaterials(question) {
+  if (!MATERIALS.length) return ''
+  const digests = await parallel(MATERIALS.map((m) => () => {
+    if (m.url) fetchesUsed++
+    const how = m.path ? 'Read 도구로 이 파일을 처음부터 끝까지 읽어라: ' + m.path : 'WebFetch로 이 페이지를 읽어라: ' + m.url
+    return agent('사용자가 이 검토에서 먼저 읽으라고 지정한 자료다. ' + how + '\n\n질문: ' + question + '\n\n질문과 관련된 내용을 150단어 이내로 요약하라. 판단에 쓸 만한 구절은 원문 그대로(50단어 이하) 최대 8개 골라 위치(줄 번호, 절 제목 등)와 함께 적어라. 자료에 없는 내용을 지어내지 마라.', { agentType: 'colosseum:participant', schema: S_DIGEST, phase: 'Materials', label: 'material:' + m.id })
+  }))
+  MATERIALS_TEXT = '[사용자 자료] 아래 자료를 먼저 읽고, 일반론이 아니라 이 자료의 내용에 근거해 논의하라. 파일이나 붙여 넣은 글을 인용할 때는 url에 material:자료ID(예: material:M1)를, quote에 원문 그대로를 넣는다. 웹 자료는 그 URL을 그대로 쓴다. 자료와 다른 주장을 하려면 그 근거를 따로 대라.\n' + MATERIALS.map((m, i) => {
+    const d = digests[i]
+    const where = m.path ? '파일 사본: ' + m.path + ' (인용 표기 material:' + m.id + ')' : 'URL: ' + m.url
+    if (!d) return '[' + m.id + '] ' + (m.title || m.id) + ' | ' + where + '\n  (읽지 못함)'
+    return '[' + m.id + '] ' + (m.title || m.id) + ' | ' + where + '\n  요약: ' + d.summary + '\n  핵심 구절: ' + (d.passages || []).map((p) => '"' + p.quote + '"' + (p.locator ? ' (' + p.locator + ')' : '')).join(' / ')
+  }).join('\n')
+  log('사용자 자료 ' + MATERIALS.length + '건을 읽음')
+  return MATERIALS_TEXT
+}
+
 // ---- evidence: page acquisition, quote checks and support assessments ----
 // One evidence record binds one quote to one claim. Three caches keep their own keys:
 //   acquisitions : normalized URL + quote -> page passage or snippet, source fields (fetched once)
@@ -628,6 +657,20 @@ function acquire(url, quote, claimText, phaseName) {
   acquisitions[key] = (async () => {
     const acq = { key, acquisition: 'unavailable', text: '', source: { reliability: 'low', freshness: 'unknown' }, note: null, assessed: null }
     const judged = (r) => ({ claimHash: textHash(claimText), support: r.support, support_reason: r.support_reason || '' })
+    if (String(url).startsWith('material:')) {
+      // A user-supplied file or text: read the run's snapshot, no fetch budget. The skill
+      // re-checks these quotes against the snapshot deterministically afterwards.
+      const m = materialById[String(url).slice(9)]
+      if (!m || !m.path) { acq.note = 'unknown material'; return acq }
+      const r = await agent('Read 도구로 이 파일을 읽어라: ' + m.path + '\n다음 구절이나 거의 같은 구절이 있으면 그 구절을 passage에, 그 구절이 든 문장 전체와 앞뒤 한 문장을 context에 원문 그대로 넣어라. 없으면 둘 다 빈 문자열이다. fetch_failed는 파일을 읽지 못했을 때만 true다. reliability는 high, origin은 material:' + m.id + '로 둔다.\n' + SUPPORT_RUBRIC + '\n\n주장: ' + claimText + '\n인용: ' + quote, { agentType: 'colosseum:participant', schema: S_CHECK, phase: phaseName, label: 'read:' + m.id, effort: 'low' })
+      acq.source = { reliability: 'high', origin: 'material:' + m.id, publisher: m.title, freshness: 'na' }
+      if (r && !r.fetch_failed) {
+        acq.acquisition = 'material'
+        acq.text = r.context && r.context.includes(r.passage || '') ? r.context : (r.passage || '') + (r.context ? '\n' + r.context : '')
+        acq.assessed = judged(r)
+      } else acq.note = 'material could not be read'
+      return acq
+    }
     let fetchFailed = false
     if (!degraded && fetchesUsed < FETCH_BUDGET) {
       fetchesUsed++
@@ -694,6 +737,7 @@ async function checkEvidence(url, quote, claimText, phaseName, claimId) {
   const m = LIB.matchQuote(quote, acq.text)
   e.match = { matcher: m.matcher, reason: m.reason, span: m.span || null, score: m.score, content_hash: textHash(acq.text) }
   // A snippet proves only what its own text contains, and only verbatim.
+  if (acq.acquisition === 'material') e.material = String(url).slice(9)
   e.quote_status = acq.acquisition === 'snippet' ? (m.status === 'v' ? 'snippet' : m.status === 'n' ? 'n' : 'u') : m.status
   if (e.quote_status === 'u') return e
   e.assessment_key = [claimId || '', claimHash, e.quote_key, e.match.content_hash, LIB.POLICY_VERSION].join('|')
@@ -712,7 +756,7 @@ const isChecked = (e) => !!e && LIB.eligible(e)
 
 // How each piece of evidence was obtained; the report states this instead of one global mode.
 function verificationSummary() {
-  const out = { full_page: 0, snippet: 0, unavailable: 0, review_required: 0 }
+  const out = { full_page: 0, material: 0, snippet: 0, unavailable: 0, review_required: 0 }
   for (const e of evidence) {
     if (out[e.acquisition] !== undefined) out[e.acquisition]++
     if (e.quote_status === 'n') out.review_required++
@@ -722,10 +766,10 @@ function verificationSummary() {
 }
 
 async function buildFactBase(question, asOf, extra) {
-  const facts = await agent('[Prime Directive] 사실적 정확성이 유일한 기준이다.\n질문: ' + question + '\n기준 시점: ' + asOf + '\n\n세 방향으로 WebSearch를 한 번씩 하라: 찬성 근거, 반대 근거, 최신 현황. 논쟁적 공적 주장이면 기존 팩트체크 기사부터 찾는다. ' + (extra || '') + '판정에 중요한 사실 3-6개를 골라 각각 URL과 검색 결과에 나온 50단어 이하 원문 구절을 적어라. 구절을 지어내지 마라.', { schema: S_FACTS, phase: 'Fact base', label: 'fact-base' })
+  const facts = await agent('[Prime Directive] 사실적 정확성이 유일한 기준이다.\n질문: ' + question + '\n기준 시점: ' + asOf + (MATERIALS_TEXT ? '\n\n' + MATERIALS_TEXT + '\n\n사용자 자료가 답하지 않거나 자료와 어긋나는 공개 근거를 우선 찾아라.' : '') + '\n\n세 방향으로 WebSearch를 한 번씩 하라: 찬성 근거, 반대 근거, 최신 현황. 논쟁적 공적 주장이면 기존 팩트체크 기사부터 찾는다. ' + (extra || '') + '판정에 중요한 사실 3-6개를 골라 각각 URL과 검색 결과에 나온 50단어 이하 원문 구절을 적어라. 구절을 지어내지 마라.', { schema: S_FACTS, phase: 'Fact base', label: 'fact-base' })
   const list = (facts && facts.facts) || []
   const evs = await checkClaims(list.map((f) => ({ text: f.claim, url: f.url, quote: f.quote })), 'Fact base')
-  const text = list.map((f, i) => '[F' + (i + 1) + '] ' + f.claim + ' | ' + f.url + ' | "' + f.quote + '" | 대조: ' + (evs[i] ? evs[i].quote_status : 'u')).join('\n')
+  const text = (MATERIALS_TEXT ? MATERIALS_TEXT + '\n\n[공개 자료]\n' : '') + list.map((f, i) => '[F' + (i + 1) + '] ' + f.claim + ' | ' + f.url + ' | "' + f.quote + '" | 대조: ' + (evs[i] ? evs[i].quote_status : 'u')).join('\n')
   return { list, evs, text, raw: facts }
 }
 // ==== colosseum-runtime end ====
@@ -764,6 +808,7 @@ async function checkedClaims(label, role, round, issue, claims, phaseName) {
 function claimById(id) { return graphClaims.find((c) => c.id === id) }
 
 // ============================================================================
+if (MATERIALS.length) { phase('Materials'); await readMaterials(A.question) }
 phase('Fact base')
 const FB = await buildFactBase(A.question, AS_OF)
 const factList = FB.list
@@ -976,6 +1021,7 @@ const pFinal = overrides.length ? Math.round(LIB.pooledProbability(draftRows, fi
 phase('Report')
 const data = {
   question: A.question, as_of: AS_OF, stakes: STAKES, mode: MODE, antithesis,
+  materials: MATERIALS.map((m) => ({ id: m.id, title: m.title, kind: m.kind })),
   roster: drafts.map((x) => ({ label: x.p.label, family: x.p.family, cli: x.p.cli || null })), dropped,
   roster_kind: HOMOGENEOUS ? '동종 명단' : '이질 명단',
   verification: verificationSummary(),
@@ -994,6 +1040,6 @@ const data = {
 }
 
 const modeNote = MODE === 'decision' ? '의사결정 모드다. 최종 답변은 권고 형태로 쓰고, 대안(antithesis)과 그 대안으로 갈아타야 할 신호를 "권고가 뒤집히는 조건"으로 적어라.\n' : MODE === 'normative' ? '가치 판단 모드다. 승자를 가리지 말고, 경험적 쟁점의 판정과 "X를 Y보다 중시하면 A, 아니면 B" 형태의 조건부 지도를 최종 답변으로 써라.\n' : ''
-const report = await agent(modeNote + '아래 JSON은 Colosseum 실행 결과다. 이 데이터만으로 한국어 최종 보고서를 써라. 데이터에 없는 사실을 보태지 마라. 형식:\n\n=== COLOSSEUM ===\n질문, 기준 시점, 명단(라벨과 모델 계열, 이질/동종 명단), 진행(라운드 수와 종료 사유), 검증 수준(verification을 그대로: 원문 대조, 스니펫, 획득 불가, 검토 필요 건수. 일부만 스니펫이면 원문 대조라고 쓰지 마라)\n## 초기 팩트 베이스 (대조 결과 표시)\n## 기준선 (초안 입장 A/B/C, BASELINE_VOTE, P0)\n## 라운드별 전개 (표: 라운드, 쟁점, 역할, 인용 v/n/snippet/u, 인정/동조 플립/무효 공격)\n## 충돌 판정 (표: 쟁점, 엔진 판정, 배심원 두 순서 판정. 엔진 라벨 표기: A_WINS→A 우세, B_WINS→B 우세, PARTIAL_BOTH_SURVIVE→쌍방 부분 인정, CONDITIONAL/VALUE_CONDITIONAL→조건부, LOSER_REFUTED_WINNER_UNPROVEN→한쪽 반박됨·다른 쪽 미입증, UNRESOLVED/NEITHER_ESTABLISHED→판정 불가)\n## 반대 입장의 가장 강한 논거\n## 합의 도달 사항\n## 해소되지 않은 쟁점 (조건부 답변, 가치 쟁점 포함)\n## 최종 답변 (팩트 클레임마다 [증거ID], 기준선 대비 일치/역전, P_final과 UNCALIBRATED)\n## 출처 (증거ID, URL, 발행처, 획득 방식, 대조 결과와 사유, 지지 판정)\n## 증거 품질 점검표 (checklist를 그대로 옮김)\n## 메타 정보 (가져오기 예산, 동조 플립, 배심원 계열: ' + jurorFamily + ', 사전부검 반영/기각, 제외된 참가자, 이 답이 틀릴 수 있는 조건)\n\n대조 결과 n은 "검토 필요"로, 검증된 근거로 쓰지 마라. baseline.p0_method가 binary가 아니면 P0와 P_final은 그 입장 하나의 확률이며, 나머지 입장의 확률을 1-P로 적지 마라. 사전부검에서 대조 결과가 v나 snippet이고 support가 full이나 partial인 증거가 있으면 최종 답변에 그 단서를 반영하고 "반영"으로, 아니면 "기각"으로 적어라. 교착을 합의로 포장하지 마라.\n\n' + JSON.stringify(data), { phase: 'Report', label: 'report' })
+const report = await agent(modeNote + '아래 JSON은 Colosseum 실행 결과다. 이 데이터만으로 한국어 최종 보고서를 써라. 데이터에 없는 사실을 보태지 마라. 형식:\n\n=== COLOSSEUM ===\n질문, 기준 시점, 명단(라벨과 모델 계열, 이질/동종 명단), 진행(라운드 수와 종료 사유), 검증 수준(verification을 그대로: 원문 대조, 스니펫, 획득 불가, 검토 필요 건수. 일부만 스니펫이면 원문 대조라고 쓰지 마라)\n## 사용자 자료 (materials가 비어 있지 않을 때만: 자료별 제목과, 최종 답에서 그 자료가 어떻게 쓰였는지 또는 반박되었는지)\n## 초기 팩트 베이스 (대조 결과 표시)\n## 기준선 (초안 입장 A/B/C, BASELINE_VOTE, P0)\n## 라운드별 전개 (표: 라운드, 쟁점, 역할, 인용 v/n/snippet/u, 인정/동조 플립/무효 공격)\n## 충돌 판정 (표: 쟁점, 엔진 판정, 배심원 두 순서 판정. 엔진 라벨 표기: A_WINS→A 우세, B_WINS→B 우세, PARTIAL_BOTH_SURVIVE→쌍방 부분 인정, CONDITIONAL/VALUE_CONDITIONAL→조건부, LOSER_REFUTED_WINNER_UNPROVEN→한쪽 반박됨·다른 쪽 미입증, UNRESOLVED/NEITHER_ESTABLISHED→판정 불가)\n## 반대 입장의 가장 강한 논거\n## 합의 도달 사항\n## 해소되지 않은 쟁점 (조건부 답변, 가치 쟁점 포함)\n## 최종 답변 (팩트 클레임마다 [증거ID], 기준선 대비 일치/역전, P_final과 UNCALIBRATED)\n## 출처 (증거ID, URL, 발행처, 획득 방식, 대조 결과와 사유, 지지 판정)\n## 증거 품질 점검표 (checklist를 그대로 옮김)\n## 메타 정보 (가져오기 예산, 동조 플립, 배심원 계열: ' + jurorFamily + ', 사전부검 반영/기각, 제외된 참가자, 이 답이 틀릴 수 있는 조건)\n\n대조 결과 n은 "검토 필요"로, 검증된 근거로 쓰지 마라. baseline.p0_method가 binary가 아니면 P0와 P_final은 그 입장 하나의 확률이며, 나머지 입장의 확률을 1-P로 적지 마라. 사전부검에서 대조 결과가 v나 snippet이고 support가 full이나 partial인 증거가 있으면 최종 답변에 그 단서를 반영하고 "반영"으로, 아니면 "기각"으로 적어라. 교착을 합의로 포장하지 마라.\n\n' + JSON.stringify(data), { phase: 'Report', label: 'report' })
 
 return { run_id: RUN_ID, report, data, graph: doc, verdict: engine }

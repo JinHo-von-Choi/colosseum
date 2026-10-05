@@ -15,6 +15,8 @@ Global option: `--data DIR` sets the data directory.
 | `restart --session S [--question-file -]` | Mark the current run interrupted and open a new one |
 | `cancel --session S`, `fail --session S --reason TEXT`, `finish --session S` | Close the run as cancelled, failed or completed |
 | `runs --session S` | List the session's runs |
+| `materials add --session S [--file -]` | Snapshot materials into the run. Input: `{"materials": [{"path": ...} \| {"url": ...} \| {"text": ..., "title": ...}]}`. Output includes `workflow_arg` for the workflow's `materials` argument |
+| `materials list --session S` | The run's materials |
 | `status --session S` | Phase, round, budget use and allowed next phases |
 | `advance --session S --to PHASE` | Move to the next phase: `fact_base`, `drafts`, `baseline`, `issues`, `round`, `verdict`, `done` |
 | `round-result --session S --verified-changes N --open-issues N [--conformity-flips N]` | Record a round; decides whether another round is allowed |
@@ -28,7 +30,7 @@ These read their input from `--file PATH`, from stdin with `--file -`, or from t
 |---------|-------|--------|
 | `quote --stdin` | `{"id", "quote", "page"}` | `v`, `n` or `u` with the reason and the matched span |
 | `baseline [--extremize A]` | `drafts.json` | vote, `P0`, whether to skip the debate or add a dissenter |
-| `verdict [--theta T]` | `graph.json` | labels, statuses, strengths, conflict verdicts |
+| `verdict [--theta T]` | `graph.json` | labels, statuses, strengths, conflict verdicts; `material_checks` lists material quotes whose status changed on the snapshot check |
 | `metrics` | `graph.json` | evidence checklist |
 | `whatif --exclude-evidence E \| --unprove-claim C` | `graph.json` | what changed and through which relations |
 | `adr [--status S] [--out DIR]` | the debate workflow's result | `decision.md` and `decision.json` |
@@ -74,6 +76,8 @@ The first that is set: `--data`, `COLOSSEUM_DATA`, the plugin data directory, `~
   sessions/<session>/
     state.json                the current run's checkpoint
     runs/<run_id>/            everything one run produced
+      materials.json          material list with SHA-256 of each snapshot
+      materials/M1.txt        material snapshots
       drafts.json, graph.json, baseline.json, verdict.json, result.json
       decision.md, decision.json
       quotes.jsonl            quote checks
@@ -124,6 +128,7 @@ Directories are created with mode 0700 and files with 0600. The source log keeps
 | `quote_status` | `v`, `snippet`, `n`, `u` |
 | `support` | `full`, `partial`, `none`, `unknown` (for this claim) |
 | `freshness` | `fresh`, `stale`, `superseded`, `na` (not time-bound), `unknown` |
+| `url` | The page URL, or `material:M1` for a file or pasted text the user supplied |
 | `origin` | ID of the original source; copies share it. Empty means the URL host |
 | `kind` | `fact`, `statistic`, `causal`, `forecast`, `value`, `recommendation` |
 | `status` | `active` or `withdrawn` |
