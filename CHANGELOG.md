@@ -1,5 +1,55 @@
 # Changelog
 
+## 3.3.0-beta.1 (2026-10-05)
+
+### Added
+- Agent registry (`scripts/agents.json`) covering Codex, Gemini CLI, Kimi Code, MiniMax Code (mcode), Qwen Code, OpenCode, Hermes Agent, OpenClaw, Cursor CLI, Copilot CLI, Crush, Amp, Goose, llm, aichat, Ollama and the Claude Code CLI. Each entry holds a fixed argument list, how the prompt is passed (stdin or one argument), the model family, the provider, and whether the invocation was checked against the tool's documentation.
+- User file `<data>/agents.json` (or `$COLOSSEUM_AGENTS_FILE`) to add agents, override fields such as `family` or `vars`, disable agents and set a preference order; `$COLOSSEUM_AGENTS` sets the order from the environment.
+- `relay.py detect [--probe]`: installed agents in preference order; `--probe` sends a one-word test prompt and caches the result for 24 hours, so only agents that are signed in and answering are used.
+- `relay.py roster`: agents the user names first, then installed agents by priority, one per model family, at least one Claude participant kept for web search, the Claude Code CLI only when named, an unused agent of another family as the juror, random label order. The result lists the providers that will receive the prompts and notes guessed families and unchecked invocations.
+
+### Changed
+- `relay.py run` accepts any registry id. Agents that take the prompt as an argument get it as one argv element without a shell; prompts with NUL bytes or over 100,000 bytes are refused, and a leading "-" is padded. Every agent runs in an empty private working directory; Codex runs in its read-only sandbox and the Claude CLI with write tools disallowed.
+- The skill detects agents with `relay.py detect --brief` and builds the roster with `relay.py roster` instead of checking for gemini, llm and aichat by name.
+- The README said participant labels are reshuffled every round; they are assigned in random order once per run, and the text now says so.
+
+## 3.2.0-beta.1 (2026-10-05)
+
+Stabilization release following the 2026-10-05 improvement plan (PR 00 to 05 and PR 07). The product focus narrows to technical decision review; forecast, diagnose and ideate stay experimental.
+
+### Fixed
+- Quote reversals were accepted as checked. The matcher (`quote-match/2`) now matches a contiguous span of the page and normalizes only display differences (whitespace, Unicode compatibility forms, quote marks, dash and minus variants, case, Markdown). Signs, numbers, units, negations and comparisons are kept, so a removed "not", -5.2% quoted as 5.2% or +5.2%, and "more than" quoted as "less than" are `u`. A verbatim quote that drops a condition from its sentence ("if ...", "...경우") is `n`.
+- `n` now means "review required" and carries no weight. One eligibility rule (`v` or `snippet`, support full or partial, not superseded) drives scores, the undercut exception and the checklist (`evidence-policy/2`).
+- A support assessment made for one claim was reused for every other claim citing the same quote. Page acquisition, quote checks and support assessments now have separate caches; support is keyed by claim id, claim text hash, quote, context hash and policy version.
+- A search result marked `in_snippet` counted as verified even when its text did not contain the quote. Snippet level now requires the returned snippet text to contain the quote verbatim, and every evidence item records `full_page`, `snippet` or `unavailable`; the report counts them instead of naming one global mode.
+- Two issues in one round produced the same claim ids, and defender rebuttals attached to the other issue's prosecutor claims. Claim ids now carry round, issue, role, participant and ordinal, and the fields are also stored on each claim.
+- `start` reset only the state file, so a new question could read the previous run's drafts and graph. Every run now lives in `sessions/<session>/runs/<run_id>/`, default inputs come from the current run only, and a closed run is read only with `--run`.
+- Concurrent forecast writes could be lost. The forecast log is now a sqlite store with unique forecast and event ids and one transaction per add or resolve; retries are idempotent and conflicting outcomes are errors.
+- Forecast scores were computed on clipped and extremized values. Brier and log loss now use the stored `p_final`; calibration bins are half-open with a closed last bin.
+- Delphi's "new evidence" check depended on participant order. The seen set is fixed at the start of each round and updated after all submissions.
+- With three or more positions, P0 read a drafter's 1 - p as the probability of the target position. The complement is now split over the other positions, and `p0_method` says which rule was used.
+- A prompt containing the heredoc terminator could escape the CLI template. CLIs now run through `scripts/relay.py` with a fixed argument list and the prompt on stdin.
+- `install.sh` replaced links it did not create. It now stops on any existing file, directory, other link or broken link.
+- Repeated relations lowered strengths; relations are now deduplicated. JavaScript validation now matches Python for numeric ids, empty status, unknown kinds and schema versions; URL hosts are compared in IDNA form in both languages.
+
+### Added
+- Run lifecycle: `resume` (from the checkpoint, optionally checked against the question hash), `restart`, `cancel`, `fail`, `runs`; statuses completed, failed, cancelled, interrupted; checkpoints of another version are refused. Budgets and the round cap are validated at start; negative round results are refused.
+- `adr`: a decision record (Markdown ADR and JSON, `colosseum.decision/v1`) rendered only from structured results: recommendation and conditions, up to three decisive evidence items, the strongest open counter-argument, next checks, baseline versus final, sensitivity to small changes of the defeat margin and proof standard, limits and versions. The status is left to the person deciding.
+- `whatif`: recompute the verdicts with one evidence item excluded or one claim unproven, without model calls, listing changed and unchanged verdicts and the relation path of each change.
+- `forecast import | export | status` and `--event-id` for retries.
+- `references/contract.md`: the source, quote, claim, assessment and run records and every version string.
+- Tests: P0 reproductions paired with controls, a Node harness that runs whole workflows with a scripted `agent()`, full-output Python/JavaScript parity, relation and order invariance, an independent check of all 4,096 four-node graphs, relay byte preservation and timeout cleanup, audit-log redaction with synthetic secrets, installer conflicts, concurrent and crashing forecast writers. CI installs Node and fails instead of skipping the JavaScript checks when it is missing.
+
+### Changed
+- The source log keeps an event id, tool, success, latency when reported, redacted URLs and hashes. Raw text is kept only with `COLOSSEUM_DEBUG_LOG=1`, still redacted. Directories are 0700 and files 0600 on POSIX; without `fcntl` the scripts refuse to open a run.
+- External CLIs are not added just because they are installed; the run plan names the providers first.
+- forecast, diagnose and ideate are marked experimental in their metadata, reports and the skill.
+- The README no longer advertises the official plugin directory until the listing is confirmed, and states the differences between plugin and manual installs and the tested platform (Linux).
+
+### Not yet verified
+- End-to-end runs on a real Claude Code host for the ten scenarios in the plan (PR 06): install, blind drafts, two issues with the same pair, single and total fetch failure, two malformed outputs, CLI timeout, damaged hook state, user cancel, resume, and restart with a new question. The harness tests replace `agent()` and do not prove host behavior.
+- Comparison against a single strong model, a plain vote and claim-level verification at matched cost (PR 08).
+
 ## 3.1.0-beta.1 (2026-09-30)
 
 ### Added

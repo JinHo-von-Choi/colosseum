@@ -26,6 +26,8 @@ import quote_match as Q  # noqa: E402
 import verdict_engine as V  # noqa: E402
 
 NODE = shutil.which("node")
+if os.environ.get("COLOSSEUM_REQUIRE_NODE") == "1" and not NODE:
+    raise RuntimeError("COLOSSEUM_REQUIRE_NODE=1 but node is not installed; the JavaScript checks would be skipped")
 
 RUNNER = """
 const fs = require('fs')

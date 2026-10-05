@@ -269,7 +269,7 @@ class StateMachineAndHooks(_CliCase):
         self.assertIsNone(self.hook("subagent-stop", {"session_id": "none", "last_assistant_message": "x"}))
 
     def test_search_budget_and_ledger(self):
-        self.cli("start", "--session", "s3", "--question", "q", "--search-budget", "2")
+        run = self.cli("start", "--session", "s3", "--question", "q", "--search-budget", "2")[1]["run_dir"]
         e = {"session_id": "s3", "tool_name": "WebSearch", "tool_input": {"query": "x"}}
         self.assertIsNone(self.hook("pre", e))
         self.assertIsNone(self.hook("pre", e))
@@ -280,9 +280,11 @@ class StateMachineAndHooks(_CliCase):
                                                                     {"title": "b", "url": "https://b.example/2"}]},
                                   "summary text"]}
         self.hook("post", dict(e, tool_response=real_shape))
-        with open(os.path.join(self.tmp.name, "sessions", "s3", "sources.jsonl")) as f:
+        with open(os.path.join(run, "sources.jsonl")) as f:
             rec = json.loads(f.readline())
-        self.assertEqual(rec["urls"], ["https://a.example/1", "https://b.example/2"])
+        self.assertEqual(rec["result_urls"], ["https://a.example/1", "https://b.example/2"])
+        self.assertTrue(rec["ok"])
+        self.assertNotIn("debug", rec)
 
     def test_snippet_mode_blocks_fetch(self):
         s = ("--session", "s4")
@@ -310,8 +312,7 @@ class StateMachineAndHooks(_CliCase):
 
     def test_baseline_and_verdict_from_run_dir(self):
         s = ("--session", "s7")
-        self.cli("start", *s, "--question", "q", "--stakes", "high")
-        run = os.path.join(self.tmp.name, "sessions", "s7")
+        run = self.cli("start", *s, "--question", "q", "--stakes", "high")[1]["run_dir"]
         with open(os.path.join(run, "drafts.json"), "w") as f:
             json.dump({"drafts": [{"label": "A", "family": "c", "position": "X", "probability": 0.8}]}, f)
         with open(os.path.join(run, "graph.json"), "w") as f:
@@ -329,7 +330,7 @@ class StateMachineAndHooks(_CliCase):
 class StdinInputs(_CliCase):
     def test_stdin_baseline_advances_and_saves(self):
         s = ("--session", "s8")
-        self.cli("start", *s)
+        run = self.cli("start", *s)[1]["run_dir"]
         self.cli("advance", *s, "--to", "fact_base")
         self.cli("advance", *s, "--to", "drafts")
         drafts = {"drafts": [{"label": "A", "family": "claude", "position": "X", "probability": 0.8},
@@ -337,7 +338,7 @@ class StdinInputs(_CliCase):
         code, out = self.cli("baseline", *s, "--file", "-", stdin=json.dumps(drafts))
         self.assertEqual(code, 0)
         self.assertEqual(self.cli("status", *s)[1]["phase"], "baseline")
-        self.assertTrue(os.path.exists(os.path.join(self.tmp.name, "sessions", "s8", "drafts.json")))
+        self.assertTrue(os.path.exists(os.path.join(run, "drafts.json")))
         self.assertEqual(self.cli("advance", *s, "--to", "verdict")[0], 0)
         code, out = self.cli("verdict", *s, "--file", "-", stdin=json.dumps(fixture("t2.json")))
         self.assertEqual(out["conflicts"][0]["verdict"], "CONDITIONAL")
@@ -345,11 +346,11 @@ class StdinInputs(_CliCase):
         self.assertIn("verification", out)
 
     def test_stdin_quote_is_logged(self):
-        self.cli("start", "--session", "s9")
+        run = self.cli("start", "--session", "s9")[1]["run_dir"]
         req = {"id": "E1", "quote": "fell by 33%", "page": "Resignations fell by 33% overall."}
         code, out = self.cli("quote", "--session", "s9", "--stdin", stdin=json.dumps(req))
         self.assertEqual(out["status"], "v")
-        with open(os.path.join(self.tmp.name, "sessions", "s9", "quotes.jsonl")) as f:
+        with open(os.path.join(run, "quotes.jsonl")) as f:
             self.assertEqual(json.loads(f.readline())["id"], "E1")
 
 

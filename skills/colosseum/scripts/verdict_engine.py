@@ -26,12 +26,13 @@ THETA = 0.5
 MAX_UNDEC = 16
 
 
-def build(doc):
+def build(doc, margin=MARGIN):
     ev = {e["id"]: e for e in doc["evidence"]}
     nodes = {c["id"]: c for c in doc["claims"] if c.get("status", "active") == "active"}
     tau = {n: G.base_score(c, ev) for n, c in nodes.items()}
-    att = [r for r in doc["relations"] if r["type"] == "attack" and r["from"] in nodes and r["to"] in nodes]
-    sup = [r for r in doc["relations"] if r["type"] == "support" and r["from"] in nodes and r["to"] in nodes]
+    relations = G.dedupe_relations(doc["relations"])
+    att = [r for r in relations if r["type"] == "attack" and r["from"] in nodes and r["to"] in nodes]
+    sup = [r for r in relations if r["type"] == "support" and r["from"] in nodes and r["to"] in nodes]
     defeats = set()
     demoted = []
     for r in att:
@@ -39,7 +40,7 @@ def build(doc):
         unconditional = r["subtype"] == "undercut" and G.has_checked_evidence(nodes[a], ev)
         if r["subtype"] == "undercut" and not unconditional:
             demoted.append((a, b))
-        if unconditional or not (tau[b] > tau[a] + MARGIN):
+        if unconditional or not (tau[b] > tau[a] + margin):
             defeats.add((a, b))
     return nodes, tau, defeats, att, sup, sorted(demoted)
 
@@ -139,9 +140,9 @@ def rule(doc, a, b, nodes, st, pref):
     return "NEITHER_ESTABLISHED"
 
 
-def verdict(doc, theta=THETA):
+def verdict(doc, theta=THETA, margin=MARGIN):
     G.validate(doc)
-    nodes, tau, defeats, att, sup, demoted = build(doc)
+    nodes, tau, defeats, att, sup, demoted = build(doc, margin)
     lab = grounded(nodes, defeats)
     pref, stable = preferred_and_stable(nodes, defeats, lab)
     strength, converged = dfquad(nodes, tau, att, sup)
@@ -149,6 +150,7 @@ def verdict(doc, theta=THETA):
     canonical = json.dumps(doc, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     out = {
         "input_sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16],
+        "policy": G.POLICY_VERSION,
         "theta": theta,
         "labels": dict(sorted(lab.items())),
         "status": dict(sorted(st.items())),

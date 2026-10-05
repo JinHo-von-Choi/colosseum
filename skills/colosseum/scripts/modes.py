@@ -13,7 +13,7 @@ import math
 from collections import defaultdict
 
 MAX_UNSUPPORTED_MOVE = 0.10
-ACH_WEIGHT = {"v": 1.0, "n": 0.8, "snippet": 0.5, "u": 0.0}
+ACH_WEIGHT = {"v": 1.0, "n": 0.0, "snippet": 0.5, "u": 0.0}
 RELIABILITY = {"high": 0.9, "medium": 0.6, "low": 0.3}
 FLOOR = 0.01
 
@@ -87,7 +87,7 @@ def ach(hypotheses, rows):
             if r["ratings"].get(h) == "I":
                 w = ACH_WEIGHT[r["quote_status"]] * RELIABILITY[r["reliability"]]
                 s += w
-                if r["quote_status"] in ("snippet", "u") or r["reliability"] == "low":
+                if r["quote_status"] in ("snippet", "n", "u") or r["reliability"] == "low":
                     weak += 1
         score[h] = round(s, 3)
         fragile[h] = weak
