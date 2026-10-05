@@ -1,4 +1,4 @@
-"""Regression tests for the P0 defects found in the 3.1.0-beta.1 review.
+"""Regression tests for evidence, run and storage defects.
 
 Each defect is reproduced next to a control that must keep working:
 quote reversals accepted as checked, support assessments shared between claims,
