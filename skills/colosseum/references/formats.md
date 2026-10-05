@@ -83,7 +83,8 @@
 | `quote_status` | v(연속 구간 일치) / snippet(스니펫 텍스트에 그대로 있음) / n(검토 필요, 가중치 0) / u(원문에 없음) |
 | `support` | full / partial / none / unknown (이 claim과 이 인용, 그 문맥만 보고 판단한 지지 수준) |
 | `freshness` | fresh / stale / superseded / na(시점과 무관) / unknown(판단 불가, 최신으로 가정하지 않음) |
-| `acquisition` | full_page / snippet / unavailable (선택. 원문을 어떻게 얻었는지) |
+| `acquisition` | full_page / material / snippet / unavailable (선택. 원문을 어떻게 얻었는지) |
+| `url` | 웹 자료는 URL, 사용자 자료의 파일과 붙여 넣은 글은 `material:M1` 형식 |
 | `origin` | 원출처 군집 ID. 같은 통신 기사, 보도자료, 논문, 데이터셋을 옮긴 증거는 같은 ID. 비우면 URL 호스트로 묶인다 |
 | `subtype` | rebut(결론 반박) / undercut(추론 무력화) / undermine(근거 약화) |
 | `final.weight` | 3 판정을 좌우 / 2 보조 사실 / 1 주변 |

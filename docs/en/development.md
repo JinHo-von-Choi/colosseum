@@ -38,6 +38,7 @@ Node 18 or later runs the JavaScript checks; without Node they are skipped. Set 
 | `test_boundaries.py` | Agent relay, log redaction, installer |
 | `test_agents.py` | Agent registry, detection, probing, roster |
 | `test_decision.py` | Decision records and what-if |
+| `test_materials.py` | Material snapshots, material quote checks, materials in the debate workflow |
 | `test_modes.py` | Mode aggregation and forecast scoring |
 
 `tests/workflow_harness.py` runs a whole workflow under Node with a scripted `agent()`. Use it to test orchestration without model calls.

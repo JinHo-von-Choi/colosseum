@@ -38,6 +38,7 @@ JavaScript 검사는 Node 18 이상이 있어야 돌고, 없으면 건너뛴다.
 | `test_boundaries.py` | 에이전트 중계, 기록의 비밀값 가림, 설치 스크립트 |
 | `test_agents.py` | 에이전트 등록부, 탐지, 응답 확인, 명단 |
 | `test_decision.py` | 결정 기록과 가정 바꿔 보기 |
+| `test_materials.py` | 자료 사본, 자료 인용 대조, 토론 워크플로에서의 자료 사용 |
 | `test_modes.py` | 모드별 집계와 예측 채점 |
 
 `tests/workflow_harness.py`는 `agent()`를 정해진 응답으로 바꿔 워크플로 전체를 Node에서 돌린다. 모델 호출 없이 진행 로직을 시험할 때 쓴다.

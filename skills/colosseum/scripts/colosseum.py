@@ -15,6 +15,7 @@
   verdict      deterministic verdicts from graph.json
   metrics      evidence-quality checklist from graph.json
   finish       close the run as completed
+  materials    snapshot user-supplied files, directories, URLs or text into the run (add, list)
   whatif       recompute verdicts with one evidence item excluded or one claim unproven
   adr          decision record (Markdown ADR + JSON) from a colosseum:debate result
   forecast     forecast store: add (stdin JSON), resolve, list, score, fit, import, export
@@ -36,6 +37,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import baseline as B  # noqa: E402
 import calibration as C  # noqa: E402
 import decision as D  # noqa: E402
+import materials as MAT  # noqa: E402
 import graph as G  # noqa: E402
 import metrics as M  # noqa: E402
 import quote_match as Q  # noqa: E402
@@ -339,19 +341,49 @@ def cmd_baseline(a):
     return emit(out)
 
 
+def _material_dir(a):
+    if not a.session:
+        return None
+    if getattr(a, "run", None):
+        return S.run_path(a.session, a.run, a.data)
+    st = S.load(a.session, a.data)
+    return S.run_dir(a.session, a.data) if st and st.get("schema") == S.SCHEMA and st.get("run_id") else None
+
+
+def _checked_graph(a, doc):
+    """Apply the deterministic material quote check when the run has materials."""
+    d = _material_dir(a)
+    return MAT.check_graph(doc, d) if d else (doc, [])
+
+
+def cmd_materials(a):
+    if a.action == "list":
+        return emit({"materials": MAT.load(S.run_dir(a.session, a.data))})
+    with S.locked(a.session, a.data):
+        _running(a)
+        req = json.load(sys.stdin) if a.file in (None, "-") else json.load(open(a.file, encoding="utf-8"))
+        out = MAT.add(S.run_dir(a.session, a.data), req.get("materials") if isinstance(req, dict) else req,
+                      S.write_private, S.secure_dir)
+    out["workflow_arg"] = [{k: m.get(k) for k in ("id", "kind", "title", "path", "url") if m.get(k)}
+                           for m in out["materials"]]
+    return emit(dict(out, ok=True))
+
+
 def cmd_verdict(a):
-    doc = G.validate(_input(a, "graph.json"))
+    doc, checks = _checked_graph(a, G.validate(_input(a, "graph.json")))
     theta = a.theta
     if theta is None:
         st = S.load(a.session, a.data) if a.session else None
         theta = 0.7 if st and st.get("stakes") == "high" else V.THETA
     out = V.verdict(doc, theta)
+    if checks:
+        out["material_checks"] = checks
     _save(a, "verdict.json", out)
     return emit(out)
 
 
 def cmd_metrics(a):
-    doc = _input(a, "graph.json")
+    doc, _ = _checked_graph(a, _input(a, "graph.json"))
     st = S.load(a.session, a.data) if a.session else None
     out = M.checklist(doc, high_stakes=bool(st and st.get("stakes") == "high"))
     if st:
@@ -361,7 +393,7 @@ def cmd_metrics(a):
 
 
 def cmd_whatif(a):
-    doc = _input(a, "graph.json")
+    doc, _ = _checked_graph(a, _input(a, "graph.json"))
     st = S.load(a.session, a.data) if a.session else None
     theta = 0.7 if st and st.get("stakes") == "high" else V.THETA
     return emit(D.whatif(doc, a.exclude_evidence, a.unprove_claim, theta))
@@ -369,6 +401,8 @@ def cmd_whatif(a):
 
 def cmd_adr(a):
     result = _input(a, "result.json")
+    if isinstance(result, dict) and isinstance(result.get("graph"), dict):
+        result["graph"], _ = _checked_graph(a, result["graph"])
     rec = D.record(result, a.status)
     md = D.markdown(rec)
     out_dir = a.out
@@ -453,6 +487,10 @@ def parser():
     sp.add_argument("--reason", required=True)
     sp.set_defaults(fn=cmd_fail)
     with_session(sub.add_parser("runs")).set_defaults(fn=cmd_runs)
+    sp = with_session(sub.add_parser("materials"))
+    sp.add_argument("action", choices=["add", "list"])
+    sp.add_argument("--file", help='add: {"materials": [{"path"|"url"|"text": ..., "title"?: ...}]} as a path, or - for stdin (default)')
+    sp.set_defaults(fn=cmd_materials)
     with_session(sub.add_parser("status")).set_defaults(fn=cmd_status)
 
     sp = with_session(sub.add_parser("advance"))
@@ -518,7 +556,7 @@ def main(argv):
         return a.fn(a)
     except Refused as e:
         return emit({"ok": False, "refused": str(e)}, 2)
-    except (G.GraphError, S.StateError, ValueError, KeyError, OSError) as e:
+    except (G.GraphError, S.StateError, MAT.MaterialError, ValueError, KeyError, OSError) as e:
         return emit({"ok": False, "error": "%s: %s" % (type(e).__name__, e)}, 2)
 
 
