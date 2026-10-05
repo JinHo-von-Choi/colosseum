@@ -4,7 +4,7 @@ description: "Runs a web-search-grounded adversarial review of a contested quest
 license: MIT
 metadata:
   author: "최진호"
-  version: "3.2.0-beta.1"
+  version: "3.3.0-beta.1"
   updated: "2026-09-30"
   category: "Research"
   tags: "multi-ai, critical-thinking, adversarial-debate, fact-checking, web-search, argumentation"
@@ -36,14 +36,18 @@ metadata:
 
 사용 가능한 도구:
 
-!`command -v python3 gemini llm aichat 2>/dev/null || true`
+!`command -v python3 2>/dev/null || true`
+
+외부 AI 에이전트(설치된 것):
+
+!`python3 "${CLAUDE_SKILL_DIR}/scripts/relay.py" detect --brief 2>/dev/null || true`
 
 모드는 다음 순서로 고른다.
 
 1. 워크플로 모드: Workflow 도구가 있고, Agent 도구의 subagent_type 목록에 `colosseum:participant`가 있으면(플러그인 설치) 이 모드로 진행한다. 흐름, 인용 대조, 기준선, 판정 계산을 워크플로 스크립트가 쥔다.
 2. 스크립트 모드: 워크플로를 쓸 수 없지만 위 목록에 `python3`가 있고 Bash를 쓸 수 있으면 이 모드로 진행한다.
 3. 수동 모드: 둘 다 안 되면 이 모드로 진행하고, 결과 머리에 "스크립트 없음: 수동 계산"을 명시한다.
-- `gemini`, `llm`, `aichat`이 보이면 참가자 명단에 넣을 수 있다(명단 규칙과 호출 방법은 [references/protocol.md](references/protocol.md) §1.2~§2.3).
+- `AGENT` 줄로 보이는 외부 에이전트(codex, gemini, kimi, mcode, opencode, hermes, openclaw 등)는 참가자 명단에 넣을 수 있다. 명단은 아래 3단계의 `relay.py roster`로 만든다(규칙과 호출 방법은 [references/protocol.md](references/protocol.md) §1.2~§2.3).
 
 이 문서에서 `CTL`은 다음 명령을 뜻한다.
 
@@ -92,7 +96,16 @@ COLOSSEUM_JSON
 
    확률 예측은 해소 기준과 해소 시점이 명확해야 한다. 질문에서 정할 수 없으면 사용자에게 물어서 정한다. `extremize`는 `CTL forecast fit`의 `a` 값을 쓴다(기록이 부족하면 1.0). `forecast_id`는 `AS_OF`와 질문 요약으로 만든다.
 2. `python3`와 Bash가 있으면 아래 "실행 열기"대로 실행을 연다. 훅의 예산 강제와 출처 기록이 이때부터 작동한다.
-3. 명단을 만든다. 참가자는 3명이고 라벨 A, B, C를 무작위 순서로 배정한다. 위 도구 목록에 외부 CLI가 있으면 [references/protocol.md](references/protocol.md) §1.3 규칙대로 넣을 수 있다. 넣기 전에 어느 제공자에게 질문과 토론 프롬프트가 전송되는지 실행 계획에 밝히고, 질문에 저장소 코드, 내부 문서, 개인정보가 들어 있으면 사용자의 승인을 받은 뒤에만 넣는다. 각 항목은 `{"label": "A", "family": "claude"}` 또는 `{"label": "B", "family": "gemini", "cli": "gemini"}` 형태다. debate에서는 명단에 넣지 않은 CLI를 `cli_juror`로 지정한다.
+3. 명단을 만든다. 사용자가 에이전트를 지정했으면("codex랑 kimi로", "opencode 써서") 그 id를 순서대로 `--prefer`에 넣고, "그것만 써"라고 했으면 `--only`에 넣는다. 사용자가 외부 에이전트를 쓰지 말라고 했으면 이 단계를 건너뛰고 Claude 참가자 3명으로 간다.
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/scripts/relay.py" --data "${CLAUDE_PLUGIN_DATA}" roster --size 3 --probe --prefer codex,kimi
+```
+
+   - 결과의 `roster`를 그대로 워크플로 args에 쓰고, debate에서는 `cli_juror`를 `cli_juror`로 넘긴다.
+   - 설치되어 있고 실제로 응답하는(`--probe`) 에이전트만 들어간다. 사용자가 지정한 에이전트가 먼저, 그다음 우선순위 순서로, 모델 계열마다 하나씩 들어간다. 웹 검색을 맡을 Claude 참가자 한 자리는 남긴다(`--max-cli`로 바꿀 수 있다). Claude Code CLI(`claude`)는 사용자가 지정할 때만 들어간다.
+   - 실행 전에 `transmission`(어느 제공자에게 질문과 토론 프롬프트가 가는지)과 `notes`(계열 추정, 미검증 호출, 없는 에이전트)를 사용자에게 한 줄로 알린다. 질문에 저장소 코드, 내부 문서, 개인정보가 들어 있으면 사용자의 승인을 받은 뒤에만 외부 에이전트를 넣는다.
+   - 명단에 없는 에이전트를 쓰고 싶다는 요청이 있으면 `<data>/agents.json`에 정의를 더하는 방법을 안내한다([references/protocol.md](references/protocol.md) §2.2).
 4. 고른 워크플로를 Workflow 도구로 호출한다. 공통 args는 `{"question": 원문 질문, "as_of": "YYYY-MM-DD", "stakes": ..., "roster": [...], "run_id": start가 돌려준 run_id, "relay": "${CLAUDE_SKILL_DIR}/scripts/relay.py"}`이고, 표의 추가 args를 더한다. 이 스킬을 호출한 것 자체가 워크플로 실행에 대한 사용자의 동의다.
 5. 워크플로는 백그라운드에서 돈다. 완료 알림을 기다리고, 그동안 결과를 추측해 쓰지 않는다.
 6. 결과의 `report`를 사용자에게 그대로 보여 준다. 다시 요약하거나 고쳐 쓰지 않는다.

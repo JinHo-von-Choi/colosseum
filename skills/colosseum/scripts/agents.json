@@ -1,0 +1,99 @@
+{
+ "schema": "colosseum.agents/v1",
+ "about": "Built-in agent CLIs. A user file at <data>/agents.json (or $COLOSSEUM_AGENTS_FILE) can add agents, override any field, set \"disabled\": true, or list preferred ids under \"prefer\". argv is run without a shell; {prompt} marks the prompt argument when prompt is \"arg\", other {name} fields come from \"vars\". \"verified\" says whether the invocation was checked against the tool's own documentation; every agent is checked again by `relay.py detect --probe`.",
+ "prefer": [],
+ "agents": {
+  "codex": {
+   "name": "OpenAI Codex CLI", "provider": "OpenAI", "family": "openai",
+   "argv": ["codex", "exec", "--sandbox", "read-only", "--skip-git-repo-check", "-"], "prompt": "stdin",
+   "priority": 10, "verified": true, "doc": "codex exec reads the prompt from stdin with -; read-only sandbox"
+  },
+  "gemini": {
+   "name": "Gemini CLI", "provider": "Google", "family": "google",
+   "argv": ["gemini"], "prompt": "stdin",
+   "priority": 11, "verified": true, "doc": "piped stdin runs headless; default approval mode does not auto-run tools"
+  },
+  "kimi": {
+   "name": "Kimi Code CLI", "provider": "Moonshot AI", "family": "moonshot",
+   "argv": ["kimi", "-p", "{prompt}"], "prompt": "arg",
+   "priority": 12, "verified": true, "doc": "kimi -p runs one prompt without the TUI and prints the reply"
+  },
+  "mcode": {
+   "name": "MiniMax Code", "provider": "MiniMax", "family": "minimax",
+   "argv": ["mcode", "exec", "{prompt}"], "prompt": "arg",
+   "priority": 13, "verified": true, "doc": "mcode exec [prompt] is the headless mode"
+  },
+  "qwen": {
+   "name": "Qwen Code", "provider": "Alibaba", "family": "alibaba",
+   "argv": ["qwen"], "prompt": "stdin",
+   "priority": 14, "verified": false, "doc": "Gemini CLI fork; piped stdin runs headless"
+  },
+  "opencode": {
+   "name": "OpenCode", "provider": "configured in opencode", "family": "opencode",
+   "argv": ["opencode", "run", "{prompt}"], "prompt": "arg",
+   "priority": 20, "verified": true, "family_uncertain": true,
+   "doc": "opencode run [message]; stdin is closed because run waits for EOF otherwise. Set family to the model's vendor in the user file"
+  },
+  "hermes": {
+   "name": "Hermes Agent (Nous Research)", "provider": "configured in hermes", "family": "hermes",
+   "argv": ["hermes", "-z", "{prompt}"], "prompt": "arg",
+   "priority": 21, "verified": true, "family_uncertain": true,
+   "doc": "hermes -z prints only the final reply; dangerous commands still need approval without --yolo"
+  },
+  "openclaw": {
+   "name": "OpenClaw", "provider": "configured in openclaw", "family": "openclaw",
+   "argv": ["openclaw", "agent", "--agent", "{agent}", "--message", "{prompt}"], "prompt": "arg",
+   "vars": {"agent": "main"},
+   "priority": 22, "verified": true, "family_uncertain": true,
+   "doc": "openclaw agent --agent <id> --message <text> runs one turn through the gateway; the gateway must be running"
+  },
+  "cursor-agent": {
+   "name": "Cursor CLI", "provider": "configured in Cursor", "family": "cursor",
+   "argv": ["cursor-agent", "-p", "--output-format", "text", "{prompt}"], "prompt": "arg",
+   "priority": 30, "verified": false, "family_uncertain": true
+  },
+  "copilot": {
+   "name": "GitHub Copilot CLI", "provider": "GitHub", "family": "github",
+   "argv": ["copilot", "-p", "{prompt}"], "prompt": "arg",
+   "priority": 31, "verified": false, "family_uncertain": true
+  },
+  "crush": {
+   "name": "Crush", "provider": "configured in crush", "family": "crush",
+   "argv": ["crush", "run", "{prompt}"], "prompt": "arg",
+   "priority": 32, "verified": false, "family_uncertain": true
+  },
+  "amp": {
+   "name": "Amp", "provider": "Sourcegraph", "family": "amp",
+   "argv": ["amp", "-x", "{prompt}"], "prompt": "arg",
+   "priority": 33, "verified": false, "family_uncertain": true
+  },
+  "goose": {
+   "name": "Goose", "provider": "configured in goose", "family": "goose",
+   "argv": ["goose", "run", "--no-session", "-i", "-"], "prompt": "stdin",
+   "priority": 34, "verified": false, "family_uncertain": true
+  },
+  "llm": {
+   "name": "llm", "provider": "configured in llm", "family": "llm",
+   "argv": ["llm"], "prompt": "stdin",
+   "priority": 40, "verified": true, "family_uncertain": true
+  },
+  "aichat": {
+   "name": "aichat", "provider": "configured in aichat", "family": "aichat",
+   "argv": ["aichat"], "prompt": "stdin",
+   "priority": 41, "verified": false, "family_uncertain": true
+  },
+  "ollama": {
+   "name": "Ollama (local model)", "provider": "local", "family": "local",
+   "argv": ["ollama", "run", "{model}"], "prompt": "stdin",
+   "requires": ["model"],
+   "priority": 42, "verified": true, "family_uncertain": true,
+   "doc": "needs vars.model in the user file, e.g. {\"agents\": {\"ollama\": {\"vars\": {\"model\": \"qwen3\"}}}}"
+  },
+  "claude": {
+   "name": "Claude Code CLI", "provider": "Anthropic", "family": "claude",
+   "argv": ["claude", "-p", "--disallowedTools", "Bash,Edit,Write,NotebookEdit"], "prompt": "stdin",
+   "priority": 90, "verified": true,
+   "doc": "same family as the built-in Claude participants, so it is picked only when the user asks for it"
+  }
+ }
+}

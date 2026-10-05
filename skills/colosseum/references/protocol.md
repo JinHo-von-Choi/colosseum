@@ -30,20 +30,46 @@ SKILL.md의 핵심 규칙과 실행 흐름을 단계별로 풀어 쓴 문서다.
 
 페이지 대조에는 `WebFetch`를 쓴다. 없으면 인용은 모두 u가 되므로, 결과에 "인용 대조 불가"를 명시한다.
 
-### 1.2 외부 AI CLI 탐지
+### 1.2 외부 AI 에이전트 탐지
+
+`scripts/agents.json` 등록부에 있는 에이전트 CLI 중 PATH에 설치된 것을 찾는다.
 
 ```bash
-for c in gemini llm aichat; do
-  command -v "$c" >/dev/null 2>&1 && echo "AVAILABLE: $c"
-done
+python3 "${CLAUDE_SKILL_DIR}/scripts/relay.py" --data "${CLAUDE_PLUGIN_DATA}" detect --probe
 ```
 
-첫 호출에서 실패하거나, 초안 형식을 두 번 연속 지키지 못한 CLI는 명단에서 빼고 Claude 서브에이전트로 대체한다. 제외 사실은 메타 정보에 남긴다.
+`--probe`는 에이전트마다 한 단어 시험 프롬프트를 보내, 설치되어 있어도 로그인이나 설정이 안 되어 응답하지 않는 것을 걸러 낸다. 결과는 24시간 재사용한다(`--refresh`로 다시 확인).
+
+| id | 도구 | 기본 계열 | 프롬프트 전달 |
+|----|------|----------|--------------|
+| codex | OpenAI Codex CLI (`codex exec`, 읽기 전용 샌드박스) | openai | 표준입력 |
+| gemini | Gemini CLI | google | 표준입력 |
+| kimi | Kimi Code CLI (`kimi -p`) | moonshot | 인자 |
+| mcode | MiniMax Code (`mcode exec`) | minimax | 인자 |
+| qwen | Qwen Code | alibaba | 표준입력 |
+| opencode | OpenCode (`opencode run`) | 설정한 모델에 따름 | 인자 |
+| hermes | Hermes Agent (`hermes -z`) | 설정한 모델에 따름 | 인자 |
+| openclaw | OpenClaw (`openclaw agent --agent main --message`) | 설정한 모델에 따름 | 인자 |
+| cursor-agent, copilot, crush, amp, goose | 각 CLI의 비대화형 모드 (문서 미검증, probe로 확인) | 설정에 따름 | 인자 또는 표준입력 |
+| llm, aichat, ollama | 범용 모델 CLI (ollama는 모델 이름 설정 필요) | 설정에 따름 | 표준입력 |
+| claude | Claude Code CLI (`claude -p`, 쓰기 도구 차단) | claude | 표준입력 |
+
+여러 모델을 고를 수 있는 에이전트(opencode, hermes, openclaw 등)는 실제 모델 계열을 알 수 없으므로 명단 결과에 "계열 추정"으로 표시된다. 사용자 파일에서 `family`를 실제 모델 제공자로 고치면 계열 가중 투표가 정확해진다.
+
+첫 호출에서 실패하거나, 초안 형식을 두 번 연속 지키지 못한 에이전트는 명단에서 빼고 Claude 서브에이전트로 대체한다. 제외 사실은 메타 정보에 남긴다.
 
 ### 1.3 참가자 명단
 
-| 가용 CLI | 명단 (3명) |
-|---------|-----------|
+`relay.py roster`가 정한다.
+
+1. 사용자가 지정한 에이전트(`--prefer`, 또는 그것만 쓰는 `--only`)를 지정한 순서대로 먼저 넣는다. 사용자 파일의 `prefer`와 환경변수 `COLOSSEUM_AGENTS`도 같은 효과다.
+2. 남은 자리는 설치되어 응답하는 에이전트를 우선순위 순서로 채우되, 이미 들어간 모델 계열은 건너뛴다(사용자가 직접 지정한 경우는 예외).
+3. 외부 에이전트는 기본 2자리까지다. 한 자리는 검색을 직접 하는 Claude 참가자에게 남긴다. 외부 에이전트가 없으면 Claude 참가자 3명이고 "동종 명단"으로 표기한다.
+4. Claude Code CLI는 내장 Claude 참가자와 같은 계열이므로 사용자가 지정할 때만 넣는다.
+5. 명단에 들지 않은 에이전트 중 명단에 없는 계열의 것을 배심원(`cli_juror`)으로 쓴다.
+6. 라벨 A, B, C는 무작위 순서로 붙는다.
+
+---------|-----------|
 | 0개 | Claude 서브에이전트 3명. "동종 명단" 표기 |
 | 1개 | CLI 1 + Claude 서브에이전트 2 |
 | 2개 이상 | CLI 2 + Claude 서브에이전트 1 (사용자가 지정한 CLI 우선, 없으면 탐지 순서) |
@@ -71,23 +97,41 @@ Claude 서브에이전트끼리는 모델 계열이 같아 오류도 비슷하�
 - 참가자에게는 그 단계에 필요한 정보만 준다. Phase 3에서는 자기 주장을 겨냥한 공격과 증거, 그리고 익명화한 중립 요약만 준다. 전체 기록은 중재자만 본다.
 - 발언 한 번은 300단어 이하로 제한한다.
 
-### 2.2 외부 CLI
+### 2.2 외부 에이전트 호출
 
-프롬프트는 셸 명령에 넣지 않는다. heredoc 종료자, `$( )`, 따옴표, 줄바꿈이 프롬프트에 들어 있으면 셸 템플릿 밖으로 빠져나올 수 있기 때문이다. 대신 `scripts/relay.py`가 허용된 CLI를 고정 인자 배열로 실행하고 프롬프트를 표준입력으로 넘긴다.
+프롬프트는 셸 명령에 넣지 않는다. heredoc 종료자, `$( )`, 따옴표, 줄바꿈이 프롬프트에 들어 있으면 셸 템플릿 밖으로 빠져나올 수 있기 때문이다. `scripts/relay.py`가 등록부의 고정 인자 배열로 실행한다.
 
 1. `python3 "${CLAUDE_SKILL_DIR}/scripts/relay.py" mktemp`로 전용 디렉터리(0700)를 만든다.
 2. Write 도구로 프롬프트 전문을 그 디렉터리의 `prompt.txt`에 쓴다.
 3. 실행한다.
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/scripts/relay.py" run --cli gemini --prompt-file "<dir>/prompt.txt" --timeout 180 --cleanup
+python3 "${CLAUDE_SKILL_DIR}/scripts/relay.py" run --cli <id> --prompt-file "<dir>/prompt.txt" --timeout 180 --cleanup
 ```
 
-- 허용된 CLI는 `gemini`, `llm`, `aichat`뿐이다. 다른 이름이나 설치되지 않은 CLI는 실행 전에 실패한다.
-- relay는 시간 초과 시 CLI의 프로세스 그룹 전체를 종료하고, 출력은 200,000바이트에서 자르며, `--cleanup`으로 프롬프트 디렉터리를 지운다. relay 자체가 중단되어도 CLI 프로세스를 함께 종료한다.
-- 프롬프트 파일은 `relay.py mktemp`가 만든 디렉터리 안에 있어야 한다. 다른 파일을 외부로 보내지 않기 위해서다.
+- 등록부에 없는 id나 설치되지 않은 에이전트는 실행 전에 실패한다.
+- 표준입력 방식 에이전트는 프롬프트를 표준입력으로 받는다. 인자 방식 에이전트는 프롬프트를 인자 하나로 받으며(셸을 거치지 않음), NUL 바이트가 있거나 100,000바이트를 넘으면 실행하지 않는다. `-`로 시작하는 프롬프트는 옵션으로 읽히지 않도록 앞에 공백 하나를 붙인다.
+- 에이전트는 빈 전용 작업 디렉터리에서 실행되므로 코딩 에이전트라도 사용자의 저장소를 고칠 수 없다. 가능한 경우 읽기 전용 모드로 실행한다(codex 읽기 전용 샌드박스, claude 쓰기 도구 차단).
+- 시간 초과 시 에이전트의 프로세스 그룹 전체를 종료하고, 출력은 200,000바이트에서 자르며, `--cleanup`으로 프롬프트 디렉터리를 지운다. relay 자체가 중단되어도 에이전트 프로세스를 함께 종료한다.
 - 결과 JSON의 `ok`가 false이거나 `timed_out`이 true면 그 단계의 발언 없음으로 기록한다.
-- 사용자 질문과 토론 프롬프트는 외부 CLI 제공자에게 전송된다. CLI가 설치되어 있다는 이유만으로 자동 채택하지 않는다. 실행 계획에 제공자와 전송 범위를 보이고, 사용자가 원하지 않으면 CLI 없이 진행한다. 민감한 저장소 내용이나 개인정보는 사용자가 승인한 범위에서만 보낸다.
+- 사용자 질문과 토론 프롬프트는 그 에이전트의 모델 제공자에게 전송된다. 설치되어 있다는 이유만으로 사용자 몰래 넣지 않는다. 실행 계획에 제공자와 전송 범위를 보이고, 사용자가 원하지 않으면 외부 에이전트 없이 진행한다. 민감한 저장소 내용이나 개인정보는 사용자가 승인한 범위에서만 보낸다.
+
+사용자 정의: `<data>/agents.json`(또는 `COLOSSEUM_AGENTS_FILE`)에 같은 형식으로 쓰면 등록부를 덮어쓴다.
+
+```json
+{
+  "prefer": ["kimi", "codex"],
+  "agents": {
+    "opencode": {"family": "zhipu", "family_uncertain": false},
+    "ollama": {"vars": {"model": "qwen3"}},
+    "gemini": {"disabled": true},
+    "my-agent": {"name": "My agent", "provider": "Mistral", "family": "mistral",
+                 "argv": ["my-agent", "--ask", "{prompt}"], "prompt": "arg"}
+  }
+}
+```
+
+`argv`의 첫 원소는 실행 파일 이름이고, `{prompt}`는 인자 방식일 때 프롬프트가 들어갈 자리, 다른 `{이름}`은 `vars` 값이다. 자리표시자는 인자 전체여야 한다(`--q={prompt}` 형태는 거부).
 
 ### 2.3 CLI 참가자의 검색 대행
 

@@ -22,13 +22,15 @@ Phase 4   Verdict: order-swapped juror rulings, override rule, premortem, eviden
 
 ### Participant roster
 
-| CLIs available | Roster (3 participants) |
-|----------------|-------------------------|
-| 0 | 3 Claude subagents, labeled "homogeneous roster" |
-| 1 | That CLI + 2 Claude subagents |
-| 2 or more | 2 CLIs + 1 Claude subagent |
+Colosseum uses the AI agent CLIs installed on the machine as participants from other model families: Codex, Gemini CLI, Kimi Code, MiniMax Code (mcode), Qwen Code, OpenCode, Hermes Agent, OpenClaw, Cursor CLI, Copilot CLI, Crush, Amp, Goose, llm, aichat, Ollama and the Claude Code CLI. `relay.py roster` builds the roster:
 
-Participants see each other only as anonymous labels (A, B, C, reshuffled every round). Model names and probabilities are never shown to peers or to the juror. Claude participants start their searches from different angles (supporting evidence, contrary evidence, primary sources), because same-family models tend to share the same mistakes.
+1. Agents the user names ("use codex and kimi") come first, in that order.
+2. Remaining seats go to installed agents that answer a test prompt (`--probe`), by priority, one per model family.
+3. By default at most two seats go to external agents; one stays with a Claude participant, which searches the web itself. With no external agent the roster is three Claude participants, labeled "homogeneous roster".
+4. The Claude Code CLI joins only when named, since it is the same family as the built-in participants.
+5. An unused agent from a family not in the roster becomes the juror.
+
+Participants see each other only as anonymous labels (A, B, C, assigned in random order when the run starts). Model names and probabilities are never shown to peers or to the juror. Claude participants start their searches from different angles (supporting evidence, contrary evidence, primary sources), because same-family models tend to share the same mistakes.
 
 ### Rules that move the verdict
 
@@ -83,7 +85,7 @@ In workflow mode the skill opens a run (so the hooks enforce budgets), launches 
 | References | `skills/colosseum/references/` | Full protocol and prompts, JSON formats, report format |
 | Run controller | `skills/colosseum/scripts/colosseum.py` | Phase state machine (illegal transitions and extra rounds are refused), run isolation, resume and restart, budgets, snippet-mode switch |
 | Computation | `baseline.py`, `quote_match.py`, `graph.py`, `verdict_engine.py`, `metrics.py`, `modes.py`, `calibration.py`, `decision.py` | Vote and pooled probability, quote classification, evidence policy, argument-graph verdicts, evidence checklist, forecast store, decision records and what-if |
-| CLI relay | `skills/colosseum/scripts/relay.py` | Runs gemini, llm or aichat without a shell, prompt on stdin, timeout and cleanup |
+| Agent relay | `skills/colosseum/scripts/relay.py`, `agents.json` | Agent registry, detection and probing, roster selection, running an agent without a shell with a timeout and cleanup |
 | Data contract | `skills/colosseum/references/contract.md` | Source, quote, claim, assessment and run records; version strings |
 | Participant agent | `agents/participant.md` | `colosseum:participant`: web tools only, no messaging or sub-agents, JSON turn format |
 | CLI relay agent | `agents/cli-proxy.md` | `colosseum:cli-proxy`: writes the prompt with the Write tool and runs `relay.py` |
@@ -100,17 +102,32 @@ Every hook is a no-op unless the current session has a running Colosseum run. Wi
   - [Brave Search MCP](https://github.com/brave/brave-search-mcp-server) (`brave_web_search`)
 - `WebFetch` for quote verification (optional; without it the run is labeled snippet-level)
 - Python 3.9 or later for the scripts (optional; without it the skill runs in manual mode)
-- Optional AI CLIs for a heterogeneous roster:
+- Optional AI agent CLIs for a heterogeneous roster. Any of these that is installed and signed in can join:
 
-| CLI | Install | How Colosseum runs it |
-|-----|---------|-----------------------|
-| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `npm install -g @google/gemini-cli` | `gemini`, prompt on stdin |
-| [llm](https://github.com/simonw/llm) | `pip install llm` | `llm`, prompt on stdin |
-| [aichat](https://github.com/sigoden/aichat) | `cargo install aichat` | `aichat`, prompt on stdin |
+| id | Tool | How Colosseum runs it |
+|----|------|-----------------------|
+| `codex` | OpenAI Codex CLI | `codex exec --sandbox read-only -`, prompt on stdin |
+| `gemini` | Gemini CLI | `gemini`, prompt on stdin |
+| `kimi` | Kimi Code CLI | `kimi -p <prompt>` |
+| `mcode` | MiniMax Code | `mcode exec <prompt>` |
+| `qwen` | Qwen Code | `qwen`, prompt on stdin |
+| `opencode` | OpenCode | `opencode run <prompt>` |
+| `hermes` | Hermes Agent (Nous Research) | `hermes -z <prompt>` |
+| `openclaw` | OpenClaw | `openclaw agent --agent main --message <prompt>` (gateway running) |
+| `cursor-agent`, `copilot`, `crush`, `amp`, `goose` | Cursor CLI, Copilot CLI, Crush, Amp, Goose | their non-interactive modes; not yet checked against their docs, so run `detect --probe` first |
+| `llm`, `aichat`, `ollama` | general model CLIs | prompt on stdin; `ollama` needs a model name in the user file |
+| `claude` | Claude Code CLI | `claude -p` with write tools disallowed |
 
-CLIs are run by `scripts/relay.py` with a fixed argument list; the prompt goes to the CLI's stdin from a file written in a private directory, so no prompt text ever reaches a shell. The relay enforces a timeout (the CLI's whole process group is killed), caps the output and deletes the prompt afterwards.
+The list lives in `skills/colosseum/scripts/agents.json`. A user file at `<data>/agents.json` (or `$COLOSSEUM_AGENTS_FILE`) adds agents, overrides any field, disables agents and sets a preference order; `$COLOSSEUM_AGENTS=codex,kimi` sets the order for one shell. For agents that can run any model (OpenCode, Hermes, OpenClaw and others), set `family` to the model's vendor so the family-weighted vote stays correct; until then the roster marks the family as a guess.
 
-Data disclosure: when external CLIs are used, the question and the debate prompts are sent to those CLIs' model providers. A CLI is not added just because it is installed: the run plan names the providers first, and questions that contain repository code, internal documents or personal data need the user's approval. Search queries go to the configured search tool.
+```bash
+python3 skills/colosseum/scripts/relay.py detect --probe     # what is installed and answering
+python3 skills/colosseum/scripts/relay.py roster --prefer codex,kimi
+```
+
+Agents run through `scripts/relay.py` with a fixed argument list and never through a shell. The prompt reaches the agent on stdin, or as one argument for agents that only take it that way (no NUL bytes, 100,000 bytes at most, a leading "-" is padded with a space). Each agent starts in an empty private directory, so a coding agent has no repository to change, and read-only modes are used where the tool has one. The relay enforces a timeout (the agent's whole process group is killed), caps the output and deletes the prompt afterwards.
+
+Data disclosure: when external agents are used, the question and the debate prompts are sent to those agents' model providers. The roster lists them (`transmission`) and the run plan names them before anything is sent, and questions that contain repository code, internal documents or personal data need the user's approval. Search queries go to the configured search tool.
 
 Local records: each run keeps its files under `<data>/sessions/<session>/runs/<run_id>/` (directories 0700, files 0600 on POSIX). The source log stores an event id, the tool, success, latency when reported, URLs with credentials removed, and hashes of the query and response. Raw query and response text is kept only with `COLOSSEUM_DEBUG_LOG=1`, and is redacted there too; delete a run's directory to remove its records.
 
@@ -178,6 +195,7 @@ Node 18 or later is needed for the JavaScript checks. Locally they are skipped w
 - `test_contract.py`: one evidence policy, relation and list-order invariance, all 4,096 four-node graphs against an independent implementation of grounded, preferred and stable semantics, full Python/JavaScript output parity, validation errors, URL and origin parity, Delphi order independence.
 - `test_boundaries.py`: the CLI relay (terminators, command substitution, quotes, newlines, NUL and 1 MB prompts arrive byte for byte with no shell; timeouts kill child processes), audit-log redaction with synthetic secrets, installer conflicts.
 - `test_decision.py`: decision records and what-if recomputation.
+- `test_agents.py`: the agent registry and user overrides, detection and probing with fake agents, roster selection, argument-mode prompts.
 - `test_scripts.py`, `test_js_parity.py`, `test_modes.py`: the verdict engine, quote samples, baseline, checklist, turn validation, state machine, hooks, mode aggregation and the forecast store.
 
 `tests/workflow_harness.py` runs a whole workflow under Node with a scripted `agent()`. It checks the orchestration logic, not the behavior of a real Claude Code host.

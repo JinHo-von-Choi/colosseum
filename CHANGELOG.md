@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.3.0-beta.1 (2026-10-05)
+
+### Added
+- Agent registry (`scripts/agents.json`) covering Codex, Gemini CLI, Kimi Code, MiniMax Code (mcode), Qwen Code, OpenCode, Hermes Agent, OpenClaw, Cursor CLI, Copilot CLI, Crush, Amp, Goose, llm, aichat, Ollama and the Claude Code CLI. Each entry holds a fixed argument list, how the prompt is passed (stdin or one argument), the model family, the provider, and whether the invocation was checked against the tool's documentation.
+- User file `<data>/agents.json` (or `$COLOSSEUM_AGENTS_FILE`) to add agents, override fields such as `family` or `vars`, disable agents and set a preference order; `$COLOSSEUM_AGENTS` sets the order from the environment.
+- `relay.py detect [--probe]`: installed agents in preference order; `--probe` sends a one-word test prompt and caches the result for 24 hours, so only agents that are signed in and answering are used.
+- `relay.py roster`: agents the user names first, then installed agents by priority, one per model family, at least one Claude participant kept for web search, the Claude Code CLI only when named, an unused agent of another family as the juror, random label order. The result lists the providers that will receive the prompts and notes guessed families and unchecked invocations.
+
+### Changed
+- `relay.py run` accepts any registry id. Agents that take the prompt as an argument get it as one argv element without a shell; prompts with NUL bytes or over 100,000 bytes are refused, and a leading "-" is padded. Every agent runs in an empty private working directory; Codex runs in its read-only sandbox and the Claude CLI with write tools disallowed.
+- The skill detects agents with `relay.py detect --brief` and builds the roster with `relay.py roster` instead of checking for gemini, llm and aichat by name.
+- The README said participant labels are reshuffled every round; they are assigned in random order once per run, and the text now says so.
+
 ## 3.2.0-beta.1 (2026-10-05)
 
 Stabilization release following the 2026-10-05 improvement plan (PR 00 to 05 and PR 07). The product focus narrows to technical decision review; forecast, diagnose and ideate stay experimental.

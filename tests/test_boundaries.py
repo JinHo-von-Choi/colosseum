@@ -58,7 +58,10 @@ class Relay(unittest.TestCase):
         self.bin = os.path.join(self.tmp, "bin")
         os.mkdir(self.bin)
         self.capture = os.path.join(self.tmp, "capture")
-        self.env = dict(os.environ, PATH=self.bin + os.pathsep + os.environ["PATH"], CAPTURE=self.capture)
+        self.env = dict(os.environ, PATH=self.bin + os.pathsep + os.environ["PATH"], CAPTURE=self.capture,
+                        COLOSSEUM_DATA=os.path.join(self.tmp, "data"))
+        self.env.pop("COLOSSEUM_AGENTS", None)
+        self.env.pop("COLOSSEUM_AGENTS_FILE", None)
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -98,7 +101,7 @@ class Relay(unittest.TestCase):
         d, p = self.prompt_file(b"x")
         code, out = self.relay("run", "--cli", "bash", "--prompt-file", p)
         self.assertEqual(code, 2)
-        self.assertIn("unsupported", out["error"])
+        self.assertIn("unknown agent", out["error"])
         code, out = self.relay("run", "--cli", "aichat", "--prompt-file", p)
         self.assertIn("not installed", out["error"])
 
