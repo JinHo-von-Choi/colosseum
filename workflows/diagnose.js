@@ -19,10 +19,15 @@ export const meta = {
 
 const LIB = (() => {
   const RELIABILITY = { high: 0.9, medium: 0.6, low: 0.3 }
-  const QUOTE = { v: 1.0, n: 0.8, snippet: 0.5, u: 0.0 }
-  const SUPPORT = { full: 1.0, partial: 0.5, none: 0.0 }
-  const FRESHNESS = { fresh: 1.0, na: 1.0, stale: 0.5, superseded: 0.0 }
+  const QUOTE = { v: 1.0, snippet: 0.5, n: 0.0, u: 0.0 }
+  const SUPPORT = { full: 1.0, partial: 0.5, none: 0.0, unknown: 0.0 }
+  const FRESHNESS = { fresh: 1.0, na: 1.0, unknown: 0.75, stale: 0.5, superseded: 0.0 }
+  const CLAIM_KINDS = new Set(['fact', 'statistic', 'causal', 'forecast', 'value', 'recommendation'])
+  const CLAIM_STATUS = new Set(['active', 'withdrawn'])
   const VALUE_KINDS = new Set(['value', 'recommendation'])
+  const GRAPH_SCHEMA = 'colosseum.arggraph/v2'
+  const POLICY_VERSION = 'evidence-policy/2'
+  const has = (obj, k) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(obj, k)
   const NO_EVIDENCE_PRIOR = 0.2
   const MARGIN = 0.15
   const THETA = 0.5
@@ -30,20 +35,103 @@ const LIB = (() => {
   const NEAR = 0.9
   const CLIP = [0.02, 0.98]
 
-  // ---- quote matching (quote_match.py) ----
-  const QUOTE_MAP = { '‘': "'", '’': "'", '“': '"', '”': '"', ' ': ' ' }
-  function normalize(text) {
-    let t = String(text || '').normalize('NFKC').replace(/[‘’“” ]/g, (c) => QUOTE_MAP[c])
-    t = t.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-    t = t.replace(/(^|\s)[#>*\-+]+\s|[*_`~|]+/g, ' ')
-    t = t.replace(/[^\p{L}\p{M}\p{N}_\s]/gu, ' ').toLowerCase()
-    return t.replace(/\s+/g, ' ').trim()
+  // ---- quote matching (quote_match.py, matcher quote-match/2) ----
+  const MATCHER_VERSION = 'quote-match/2'
+  const CHAR_MAP = {
+    '‘': "'", '’': "'", '‚': "'", '‛': "'", '′': "'",
+    '“': '"', '”': '"', '„': '"', '‟': '"', '″': '"',
+    '‐': '-', '‑': '-', '‒': '-', '–': '-', '—': '-', '―': '-',
+    '−': '-', '﹘': '-', '﹣': '-', '－': '-',
+    ' ': ' ', ' ': ' ', ' ': ' ', '​': '',
   }
-  function trigrams(words) {
-    const out = []
-    for (let i = 0; i + 2 < words.length; i++) out.push(words[i] + '\u0001' + words[i + 1] + '\u0001' + words[i + 2])
-    if (!out.length && words.length) out.push(words.join('\u0001'))
-    return out
+  const SIGNS = '+-±'
+  const KEEP_SYMBOLS = new Set('<>=≤≥≠≈$€£¥₩%‰')
+  const COMPARE_SYMBOLS = new Set('<>=≤≥≠≈')
+  const SENTENCE_END = new Set('!?\n。')
+  const NEGATIONS = new Set(['not', 'no', 'never', 'none', 'nor', 'neither', 'cannot', 'without', 'nobody', 'nothing', 'nowhere',
+    '안', '못', '미', '비', '불', '무'])
+  const NEGATION_PARTS = ['않', '없', '아니', '못하', '불가']
+  const COMPARATORS = new Set(['more', 'less', 'fewer', 'greater', 'over', 'under', 'above', 'below', 'least', 'most',
+    'than', 'exceed', 'exceeds', 'exceeded', 'up', 'down', 'rose', 'fell', 'increase', 'decrease',
+    'increased', 'decreased', 'higher', 'lower', '이상', '이하', '미만',
+    '초과', '이내', '넘게', '이상의', '이하의'])
+  const QUALIFIERS = new Set(['if', 'unless', 'when', 'whenever', 'only', 'except', 'excluding', 'provided', 'assuming', 'until',
+    '단', '다만', '만약', '경우', '경우에', '경우에는',
+    '조건', '한해', '제외하고', '제외하면'])
+  const QUALIFIER_SUFFIXES = ['면', '경우', '때', '때는', '때만', '더라도']
+  const isWord = (ch) => ch === '_' || /[\p{L}\p{M}\p{N}]/u.test(ch)
+  const isDigit = (ch) => /\p{Nd}/u.test(ch)
+  function stripMarkdown(text) {
+    let out = '', i = 0
+    const n = text.length
+    while (i < n) {
+      const ch = text[i]
+      if (ch === '!' && i + 1 < n && text[i + 1] === '[') { i++; continue }
+      if (ch === '[') {
+        const close = text.indexOf(']', i + 1)
+        if (close !== -1 && close + 1 < n && text[close + 1] === '(') {
+          const end = text.indexOf(')', close + 2)
+          if (end !== -1) { out += text.slice(i + 1, close); i = end + 1; continue }
+        }
+      }
+      out += ch
+      i++
+    }
+    const lines = out.split('\n').map((line) => {
+      let s = line.replace(/^\s+/, '')
+      let j = 0
+      while (j < s.length && '#>'.includes(s[j])) j++
+      if (j && (j === s.length || s[j] === ' ')) s = s.slice(j)
+      s = s.replace(/^\s+/, '')
+      if (s.length > 1 && '*-+'.includes(s[0]) && s[1] === ' ') s = s.slice(2)
+      return s
+    })
+    return Array.from(lines.join('\n'), (ch) => ('*_`~|'.includes(ch) ? ' ' : ch)).join('')
+  }
+  function normalize(text) {
+    let t = String(text || '').normalize('NFKC')
+    t = Array.from(t, (ch) => (ch in CHAR_MAP ? CHAR_MAP[ch] : ch)).join('')
+    t = stripMarkdown(t).toLowerCase()
+    return t.split('\n').map((line) => line.split(/\s+/).filter(Boolean).join(' ')).filter(Boolean).join('\n')
+  }
+  function tokenize(norm) {
+    const c = Array.from(norm), n = c.length, toks = [], ends = []
+    let i = 0
+    while (i < n) {
+      const ch = c[i], prev = i ? c[i - 1] : ' '
+      const signed = SIGNS.includes(ch) && i + 1 < n && isDigit(c[i + 1]) && !isWord(prev) && !'.,'.includes(prev)
+      if (signed || isDigit(ch)) {
+        let j = signed ? i + 1 : i
+        while (j < n && isDigit(c[j])) j++
+        while (j + 1 < n && '.,'.includes(c[j]) && isDigit(c[j + 1])) { j++; while (j < n && isDigit(c[j])) j++ }
+        while (j < n && (isWord(c[j]) || '%‰'.includes(c[j]))) j++
+        toks.push(c.slice(i, j).join('')); ends.push(false); i = j
+      } else if (isWord(ch)) {
+        let j = i
+        while (j < n && (isWord(c[j]) || (c[j] === "'" && j + 1 < n && isWord(c[j + 1]) && j > i))) j++
+        toks.push(c.slice(i, j).join('')); ends.push(false); i = j
+      } else if (KEEP_SYMBOLS.has(ch)) {
+        toks.push(ch); ends.push(false); i++
+      } else {
+        if (ends.length && (SENTENCE_END.has(ch) || (ch === '.' && (i + 1 >= n || ' \n"\')'.includes(c[i + 1]))))) ends[ends.length - 1] = true
+        i++
+      }
+    }
+    return [toks, ends]
+  }
+  const isNegation = (t) => NEGATIONS.has(t) || t.endsWith("n't") || NEGATION_PARTS.some((p) => t.includes(p))
+  const isComparator = (t) => COMPARATORS.has(t) || COMPARE_SYMBOLS.has(t)
+  const isQualifier = (t) => QUALIFIERS.has(t) || (Array.from(t).length >= 2 && t.charCodeAt(0) >= 128 && QUALIFIER_SUFFIXES.some((s) => t.endsWith(s)))
+  const hasDigit = (t) => Array.from(t).some(isDigit)
+  const cmpStr = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
+  const guarded = (tokens) => [...new Set(tokens.filter((t) => hasDigit(t) || isNegation(t) || isComparator(t)))].sort(cmpStr)
+  function findRun(q, p) {
+    for (let s = 0; s + q.length <= p.length; s++) {
+      let k = 0
+      while (k < q.length && p[s + k] === q[k]) k++
+      if (k === q.length) return s
+    }
+    return -1
   }
   function lcs(a, b) {
     let prev = new Array(b.length + 1).fill(0)
@@ -54,43 +142,51 @@ const LIB = (() => {
     }
     return prev[b.length]
   }
-  function bestWindow(qn, pn) {
-    const q = qn ? qn.split(' ') : []
-    const p = pn ? pn.split(' ') : []
-    if (!q.length || !p.length) return [0, []]
-    const qg = new Set(trigrams(q))
-    const size = q.length + 5
-    const pageGrams = trigrams(p)
-    let best = 0, bestSeg = []
+  function bestWindow(q, p) {
+    if (!q.length || !p.length) return [0, 0, 0]
+    const qset = new Set(q), size = q.length + 3
+    let best = 0, bs = 0, be = 0
     const last = Math.max(1, p.length - q.length + 1)
     for (let start = 0; start < last; start++) {
-      if (q.length >= 3) {
-        let hits = 0
-        for (const g of pageGrams.slice(start, start + size)) if (qg.has(g)) hits++
-        if (hits < Math.max(1, Math.floor(qg.size / 5))) continue
-      }
       const seg = p.slice(start, start + size)
+      if (q.length >= 3 && seg.filter((t) => qset.has(t)).length < NEAR * q.length) continue
       const ratio = lcs(q, seg) / q.length
       if (ratio > best) {
-        best = ratio
-        bestSeg = seg
+        best = ratio; bs = start; be = start + seg.length
         if (best === 1) break
       }
     }
-    return [best, bestSeg]
+    return [best, bs, be]
   }
   function matchQuote(quote, page) {
-    const qn = normalize(quote), pn = normalize(page)
-    const words = qn ? qn.split(' ').length : 0
-    if (!qn || !pn) return { status: 'u', score: 0, words, reason: 'empty quote or page' }
-    if ((' ' + pn + ' ').includes(' ' + qn + ' ')) return { status: 'v', score: 1, words }
-    const [ratio, win] = bestWindow(qn, pn)
-    const winSet = new Set(win)
-    const numbersOk = qn.split(' ').filter((w) => /\p{Nd}/u.test(w)).every((w) => winSet.has(w))
+    const [q] = tokenize(normalize(quote))
+    const [p, ends] = tokenize(normalize(page))
+    const out = { matcher: MATCHER_VERSION, words: q.length }
+    if (!q.length || !p.length) return Object.assign(out, { status: 'u', score: 0, reason: 'empty quote or page' })
+    if (q.length > 50) out.warning = 'quote longer than 50 words'
+    const start = findRun(q, p)
+    if (start >= 0) {
+      const end = start + q.length
+      let lo = start, hi = end
+      while (lo > 0 && !ends[lo - 1]) lo--
+      while (hi < ends.length && !ends[hi - 1]) hi++
+      const dropped = [...new Set(p.slice(lo, start).concat(p.slice(end, hi)).filter(isQualifier))].sort(cmpStr)
+      Object.assign(out, { score: 1, span: [start, end] })
+      if (dropped.length) return Object.assign(out, { status: 'n', kind: 'qualifier_omitted', reason: 'quote leaves out part of its sentence that carries a condition or scope: ' + dropped.join(', ') })
+      return Object.assign(out, { status: 'v', reason: 'exact' })
+    }
+    const [ratio, ws, we] = bestWindow(q, p)
     const score = Math.round(ratio * 1000) / 1000
-    const out = { status: score >= NEAR && numbersOk ? 'n' : 'u', score, words }
-    if (!numbersOk) out.reason = 'numbers differ from the page'
-    return out
+    out.score = score
+    if (score < NEAR) return Object.assign(out, { status: 'u', reason: 'not found on the page' })
+    const qset = new Set(q)
+    let window = p.slice(ws, we)
+    while (window.length && !qset.has(window[0])) window = window.slice(1)
+    while (window.length && !qset.has(window[window.length - 1])) window = window.slice(0, -1)
+    const gq = guarded(q), gw = guarded(window)
+    if (JSON.stringify(gq.filter(hasDigit)) !== JSON.stringify(gw.filter(hasDigit))) return Object.assign(out, { status: 'u', reason: 'numbers or signs differ from the page' })
+    if (JSON.stringify(gq) !== JSON.stringify(gw)) return Object.assign(out, { status: 'u', reason: 'negation or comparison differs from the page' })
+    return Object.assign(out, { status: 'n', kind: 'near', span: [ws, we], reason: 'near match; review required' })
   }
 
   // ---- baseline (baseline.py) ----
@@ -140,14 +236,22 @@ const LIB = (() => {
   }
 
   // ---- graph and verdicts (graph.py, verdict_engine.py) ----
+  function normalizeUrl(url) {
+    let u
+    try { u = new URL(String(url || '').trim()) } catch (err) { return '' }
+    if (!['http:', 'https:'].includes(u.protocol) || !u.hostname) return ''
+    const host = u.hostname.replace(/\.+$/, '')
+    return u.protocol + '//' + host + (u.port ? ':' + u.port : '') + (u.pathname || '/') + (u.search && u.search !== '?' ? u.search : '')
+  }
   function originOf(e) {
     if (e.origin) return String(e.origin)
-    let host = ''
-    try { host = new URL(e.url || '').hostname } catch (err) { host = '' }
+    const url = normalizeUrl(e.url)
+    let host = url ? url.split('://')[1].split('/')[0].split(':')[0] : ''
     if (host.startsWith('www.')) host = host.slice(4)
     return host ? 'host:' + host : 'unknown'
   }
-  const evidenceScore = (e) => RELIABILITY[e.reliability] * QUOTE[e.quote_status] * SUPPORT[e.support] * FRESHNESS[e.freshness || 'na']
+  const eligible = (e) => QUOTE[e.quote_status] > 0 && (e.support === 'full' || e.support === 'partial') && (e.freshness || 'na') !== 'superseded'
+  const evidenceScore = (e) => (eligible(e) ? RELIABILITY[e.reliability] * QUOTE[e.quote_status] * SUPPORT[e.support] * FRESHNESS[e.freshness || 'na'] : 0)
   function baseScore(claim, evById) {
     const best = {}
     for (const eid of claim.evidence || []) {
@@ -158,26 +262,52 @@ const LIB = (() => {
     for (const s of Object.values(best)) miss *= 1 - s
     return 1 - miss
   }
-  const hasChecked = (claim, evById) => (claim.evidence || []).some((eid) => evById[eid].quote_status !== 'u' && evById[eid].support !== 'none')
+  const hasChecked = (claim, evById) => (claim.evidence || []).some((eid) => eligible(evById[eid]))
+  const relationKey = (r) => [r.type, r.subtype || '', r.from, r.to].join('\u0000')
+  function dedupeRelations(relations) {
+    const seen = new Set()
+    return relations.filter((r) => { const k = relationKey(r); if (seen.has(k)) return false; seen.add(k); return true })
+  }
 
+  // Same checks, in the same order, as graph.validate; the first problem is reported.
   function validate(doc) {
+    const isObj = (x) => !!x && typeof x === 'object' && !Array.isArray(x)
+    if (!isObj(doc)) throw new Error('graph must be a JSON object')
     for (const k of ['evidence', 'claims', 'relations']) if (!Array.isArray(doc[k])) throw new Error('missing list: ' + k)
+    const schema = doc.schema === undefined ? GRAPH_SCHEMA : doc.schema
+    if (schema !== 'colosseum.arggraph/v1' && schema !== GRAPH_SCHEMA) throw new Error('unknown graph schema ' + doc.schema)
     const ev = new Set(), cl = new Set()
     for (const e of doc.evidence) {
-      if (!e.id || ev.has(e.id)) throw new Error('bad evidence id ' + e.id)
+      if (!isObj(e)) throw new Error('evidence must be an object')
+      if (typeof e.id !== 'string' || !e.id) throw new Error('evidence without id')
+      if (ev.has(e.id)) throw new Error('duplicate evidence id: ' + e.id)
       ev.add(e.id)
-      if (!(e.reliability in RELIABILITY) || !(e.quote_status in QUOTE) || !(e.support in SUPPORT) || !((e.freshness || 'na') in FRESHNESS)) throw new Error('bad evidence fields ' + e.id)
+      if (!has(RELIABILITY, e.reliability)) throw new Error(e.id + ': bad reliability')
+      if (!has(QUOTE, e.quote_status)) throw new Error(e.id + ': bad quote_status')
+      if (!has(SUPPORT, e.support)) throw new Error(e.id + ': bad support')
+      if (!has(FRESHNESS, e.freshness === undefined ? 'na' : e.freshness)) throw new Error(e.id + ': bad freshness')
     }
     for (const c of doc.claims) {
-      if (!c.id || cl.has(c.id)) throw new Error('bad claim id ' + c.id)
+      if (!isObj(c)) throw new Error('claim must be an object')
+      if (typeof c.id !== 'string' || !c.id) throw new Error('claim without id')
+      if (cl.has(c.id)) throw new Error('duplicate claim id: ' + c.id)
       cl.add(c.id)
+      if (!CLAIM_KINDS.has(c.kind === undefined ? 'fact' : c.kind)) throw new Error(c.id + ': bad kind')
+      if (!CLAIM_STATUS.has(c.status === undefined ? 'active' : c.status)) throw new Error(c.id + ': bad status')
+      if (c.evidence !== undefined && !Array.isArray(c.evidence)) throw new Error(c.id + ': evidence must be a list')
       for (const eid of c.evidence || []) if (!ev.has(eid)) throw new Error(c.id + ' cites unknown evidence ' + eid)
     }
     for (const r of doc.relations) {
-      if (!cl.has(r.from) || !cl.has(r.to) || r.from === r.to) throw new Error('bad relation ' + r.from + ' -> ' + r.to)
+      if (!isObj(r)) throw new Error('relation must be an object')
+      if (r.type !== 'attack' && r.type !== 'support') throw new Error('relation type must be attack or support')
+      if (!cl.has(r.from) || !cl.has(r.to)) throw new Error('relation ' + r.from + ' -> ' + r.to + ' references an unknown claim')
+      if (r.from === r.to) throw new Error('self-relation on ' + r.from)
       if (r.type === 'attack' && !['rebut', 'undercut', 'undermine'].includes(r.subtype)) throw new Error('attack needs subtype')
     }
-    for (const cf of doc.conflicts || []) if (!cl.has(cf.a) || !cl.has(cf.b)) throw new Error('conflict references an unknown claim')
+    for (const cf of doc.conflicts || []) {
+      if (!isObj(cf)) throw new Error('conflict must be an object')
+      if (!cl.has(cf.a) || !cl.has(cf.b)) throw new Error('conflict references an unknown claim')
+    }
     return doc
   }
 
@@ -187,10 +317,11 @@ const LIB = (() => {
     const evById = Object.fromEntries(doc.evidence.map((e) => [e.id, e]))
     const nodes = {}
     for (const c of doc.claims) if ((c.status || 'active') === 'active') nodes[c.id] = c
-    const ids = Object.keys(nodes).sort()
+    const ids = Object.keys(nodes).sort(cmpStr)
     const tau = Object.fromEntries(ids.map((n) => [n, baseScore(nodes[n], evById)]))
-    const att = doc.relations.filter((r) => r.type === 'attack' && nodes[r.from] && nodes[r.to])
-    const sup = doc.relations.filter((r) => r.type === 'support' && nodes[r.from] && nodes[r.to])
+    const relations = dedupeRelations(doc.relations)
+    const att = relations.filter((r) => r.type === 'attack' && has(nodes, r.from) && has(nodes, r.to))
+    const sup = relations.filter((r) => r.type === 'support' && has(nodes, r.from) && has(nodes, r.to))
     const defeats = new Set(), demoted = []
     for (const r of att) {
       const unconditional = r.subtype === 'undercut' && hasChecked(nodes[r.from], evById)
@@ -249,7 +380,7 @@ const LIB = (() => {
     for (const n of ids) status[n] = lab[n] === 'OUT' ? 'REJECTED' : lab[n] === 'UNDEC' ? 'UNDECIDED' : !converged ? 'IN_UNPROVEN' : s[n] >= theta ? 'ACCEPTED' : 'IN_UNPROVEN'
     const r3 = (x) => Math.round(x * 1000) / 1000
     const out = {
-      theta, labels: lab, status,
+      policy: POLICY_VERSION, theta, labels: lab, status,
       base: Object.fromEntries(ids.map((n) => [n, r3(tau[n])])),
       strength: Object.fromEntries(ids.map((n) => [n, r3(s[n])])),
       qbaf_converged: converged,
@@ -280,10 +411,10 @@ const LIB = (() => {
     validate(doc)
     const ev = Object.fromEntries(doc.evidence.map((e) => [e.id, e]))
     const claims = Object.fromEntries(doc.claims.map((c) => [c.id, c]))
-    const checked = (e, level) => (level === 'quote' ? ['v', 'n'] : ['v', 'n', 'snippet']).includes(e.quote_status) && e.support !== 'none'
+    const checked = (e, level) => (level === 'quote' ? ['v'] : ['v', 'snippet']).includes(e.quote_status) && eligible(e)
     const target = 2 + (highStakes ? 1 : 0)
     const rows = { decisive: [0, 0, 0], supporting: [0, 0, 0] }
-    const corroboration = {}, unverified = new Set(), quality = { high: 0, medium: 0, low: 0 }
+    const corroboration = {}, unverified = new Set(), review = new Set(), quality = { high: 0, medium: 0, low: 0 }
     for (const f of doc.final || []) {
       const c = claims[f.claim]
       if (!c) throw new Error('final references unknown claim ' + f.claim)
@@ -293,7 +424,7 @@ const LIB = (() => {
       rows[bucket][2]++
       if (cited.some((e) => checked(e, 'quote'))) rows[bucket][0]++
       else if (cited.some((e) => checked(e, 'snippet'))) rows[bucket][1]++
-      for (const e of cited) { quality[e.reliability]++; if (e.quote_status === 'u') unverified.add(e.id) }
+      for (const e of cited) { quality[e.reliability]++; if (e.quote_status === 'u') unverified.add(e.id); else if (e.quote_status === 'n') review.add(e.id) }
       if (bucket === 'decisive') corroboration[c.id] = new Set(cited.filter((e) => checked(e, 'snippet')).map(originOf)).size
     }
     const citedBy = {}
@@ -306,7 +437,8 @@ const LIB = (() => {
       source_quality: quality,
       corroboration: { target, per_decisive_claim: corroboration, below_target: Object.keys(corroboration).filter((k) => corroboration[k] < target).sort() },
       origin_diversity: origins.length ? Math.round((1 - shared / origins.length) * 1000) / 1000 : null,
-      unverified_quotes: [...unverified].sort(),
+      unverified_quotes: [...unverified].sort(cmpStr),
+      review_required: [...review].sort(cmpStr),
     }
   }
 
@@ -344,7 +476,7 @@ const LIB = (() => {
     for (const e of estimates) (byFam[e.family] = byFam[e.family] || []).push(Number(e.value))
     return median(Object.values(byFam).map(median))
   }
-  const ACH_WEIGHT = { v: 1.0, n: 0.8, snippet: 0.5, u: 0.0 }
+  const ACH_WEIGHT = { v: 1.0, n: 0.0, snippet: 0.5, u: 0.0 }
   function ach(hypotheses, rows) {
     const kept = [], dropped = []
     for (const r of rows) {
@@ -357,7 +489,7 @@ const LIB = (() => {
       for (const r of kept) {
         if (r.ratings[h] === 'I') {
           s += ACH_WEIGHT[r.quote_status] * RELIABILITY[r.reliability]
-          if (r.quote_status === 'snippet' || r.quote_status === 'u' || r.reliability === 'low') w++
+          if (r.quote_status === 'snippet' || r.quote_status === 'n' || r.quote_status === 'u' || r.reliability === 'low') w++
         }
       }
       inconsistency[h] = Math.round(s * 1000) / 1000
@@ -386,7 +518,7 @@ const LIB = (() => {
     return Object.fromEntries(hypotheses.map((h) => [h, Math.round((raw[h] / z) * 1000) / 1000]))
   }
 
-  return { normalize, matchQuote, baseline, pooledProbability, verdict, checklist, baseScore, originOf, borda, delphiFeedback, limitMove, familyMedian, ach, coherent, logLinearPool }
+  return { MATCHER_VERSION, POLICY_VERSION, GRAPH_SCHEMA, normalize, tokenize, matchQuote, normalizeUrl, eligible, baseline, pooledProbability, verdict, checklist, baseScore, originOf, borda, delphiFeedback, limitMove, familyMedian, ach, coherent, logLinearPool }
 })()
 // ==== colosseum-lib end ====
 
@@ -423,8 +555,6 @@ const ANGLES = ['주장을 지지하는 근거부터 찾는다', '주장을 반�
 const S_CLAIM = { type: 'object', properties: { text: { type: 'string' }, kind: { type: 'string', enum: ['fact', 'statistic', 'causal', 'forecast', 'value', 'recommendation'] }, url: { type: 'string' }, quote: { type: 'string' } }, required: ['text', 'kind'] }
 const S_CLAIMS = { type: 'array', items: S_CLAIM, maxItems: 4 }
 const S_FACTS = { type: 'object', properties: { facts: { type: 'array', items: { type: 'object', properties: { claim: { type: 'string' }, url: { type: 'string' }, quote: { type: 'string' }, publisher: { type: 'string' } }, required: ['claim', 'url', 'quote'] } } }, required: ['facts'] }
-const S_CHECK = { type: 'object', properties: { fetch_failed: { type: 'boolean' }, passage: { type: 'string' }, publisher: { type: 'string' }, published: { type: 'string' }, reliability: { type: 'string', enum: ['high', 'medium', 'low'] }, origin: { type: 'string' }, support: { type: 'string', enum: ['full', 'partial', 'none'] } }, required: ['fetch_failed', 'passage', 'reliability', 'origin', 'support'] }
-const S_SNIPPET = { type: 'object', properties: { in_snippet: { type: 'boolean' }, snippet: { type: 'string' }, reliability: { type: 'string', enum: ['high', 'medium', 'low'] }, origin: { type: 'string' }, support: { type: 'string', enum: ['full', 'partial', 'none'] } }, required: ['in_snippet', 'reliability', 'origin', 'support'] }
 const S_PREMORTEM = { type: 'object', properties: { causes: { type: 'array', items: { type: 'object', properties: { cause: { type: 'string' }, check: { type: 'string' } }, required: ['cause', 'check'] }, maxItems: 3 }, underconfidence: { type: 'string' }, claims: S_CLAIMS }, required: ['causes', 'underconfidence', 'claims'] }
 
 // One participant turn. Claude participants run as colosseum:participant; CLI participants
@@ -438,9 +568,17 @@ async function turn(p, role, body, schema, phaseName) {
   return agent(prompt, { agentType: 'colosseum:participant', schema, phase: phaseName, label: p.label + ':' + role })
 }
 
-// ---- evidence registry and quote checks ----
+// ---- evidence: page acquisition, quote checks and support assessments ----
+// One evidence record binds one quote to one claim. Three caches keep their own keys:
+//   acquisitions : normalized URL + quote -> page passage or snippet, source fields (fetched once)
+//   quote checks : content hash + quote + matcher version (pure, recomputed from the cached text)
+//   assessments  : claim id + claim text hash + quote key + context hash + policy version -> support
+// A new claim citing an already fetched quote reuses the acquisition but gets its own
+// support assessment, so a judgment made for one claim never leaks to another.
 const evidence = []
 const evidenceByKey = {}
+const acquisitions = {}
+const assessments = {}
 const failedHosts = new Set()
 let fetchesUsed = 0
 let degraded = false
@@ -448,52 +586,124 @@ let degraded = false
 function hostOf(url) {
   try { return new URL(url).hostname } catch (e) { return url }
 }
+function textHash(s) {
+  let h1 = 0x811c9dc5, h2 = 0x01000193
+  const t = String(s || '')
+  for (let i = 0; i < t.length; i++) {
+    const c = t.charCodeAt(i)
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0
+    h2 = Math.imul(h2 ^ c, 0x5bd1e995) >>> 0
+  }
+  return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')
+}
+const quoteKey = (url, quote) => (LIB.normalizeUrl(url) || String(url || '')) + '\u0000' + String(quote || '')
 
-async function checkEvidence(url, quote, claimText, phaseName) {
-  const key = url + '\u0000' + quote
-  if (evidenceByKey[key]) return evidenceByKey[key]
-  const e = { id: 'E' + (evidence.length + 1), url, quote, claim: claimText, reliability: 'low', quote_status: 'u', support: 'none', freshness: 'na' }
-  evidence.push(e)
-  evidenceByKey[key] = e
-  if (!url || !quote) { e.note = 'missing url or quote'; return e }
-  const rubric = '신뢰도: high는 1차 자료, 공식 문서, 동료 심사 연구 / medium은 주요 언론, 전문가 블로그 / low는 커뮤니티 글, 출처 불명 요약. origin은 이 내용의 원출처 ID(같은 논문, 보도자료, 통신 기사, 데이터셋을 옮긴 페이지들은 같은 ID. 예: "doi:10.1038/xxx", "reuters:story-slug"). support는 아래 주장과 인용만 보고 판단한다: 인용이 주장을 그대로 뒷받침하면 full, 일부만 뒷받침하면 partial, 아니면 none.'
-  let fetchFailed = false
-  if (!degraded && fetchesUsed < FETCH_BUDGET) {
-    fetchesUsed++
-    const r = await agent('WebFetch로 이 URL을 가져와라: ' + url + '\nWebFetch 프롬프트: "다음 구절이나 거의 같은 구절이 페이지에 있으면 그 구절을 원문 그대로 반환하고, 없으면 NOT FOUND라고만 답하라: ' + quote + '"\n가져오기가 실패하면(오류, 차단, 빈 페이지) fetch_failed를 true로 하라. passage에는 WebFetch가 돌려준 구절을 그대로 넣고, NOT FOUND면 빈 문자열을 넣어라.\n' + rubric + '\n\n주장: ' + claimText + '\n인용: ' + quote, { schema: S_CHECK, phase: phaseName, label: 'check:' + e.id, effort: 'low' })
-    if (r) {
-      Object.assign(e, { reliability: r.reliability, origin: r.origin || undefined, support: r.support, publisher: r.publisher, published: r.published })
-      if (r.fetch_failed) {
-        failedHosts.add(hostOf(url))
-        e.note = 'fetch failed'
-        if (failedHosts.size >= 3 && !degraded) { degraded = true; log('원문 대조 불가 모드: 서로 다른 호스트 3곳에서 페이지 가져오기 실패') }
-        fetchFailed = true
-      } else {
-        const m = LIB.matchQuote(quote, r.passage || '')
-        e.quote_status = m.status
-        e.match_score = m.score
-        return e
+const RUBRIC = '신뢰도: high는 1차 자료, 공식 문서, 동료 심사 연구 / medium은 주요 언론, 전문가 블로그 / low는 커뮤니티 글, 출처 불명 요약. origin은 이 내용의 원출처 ID(같은 논문, 보도자료, 통신 기사, 데이터셋을 옮긴 페이지들은 같은 ID. 예: "doi:10.1038/xxx", "reuters:story-slug"). freshness: 기준 시점에 이 자료가 최신이면 fresh, 더 새 자료로 낡았으면 stale, 명시적으로 대체되었으면 superseded, 시점과 무관한 사실이면 na, 판단할 수 없으면 unknown.'
+const SUPPORT_RUBRIC = 'support는 아래 주장 하나와 인용 및 그 문맥만 보고 판정한다: 인용이 주장을 그대로 뒷받침하면 full, 일부만 뒷받침하면 partial, 뒷받침하지 않거나 반대면 none, 문맥이 부족해 판단할 수 없으면 unknown. 인용 앞뒤의 조건, 예외, 범위가 주장과 맞지 않으면 full을 주지 마라. support_reason에 한 문장으로 이유를 적어라.'
+const S_CHECK = { type: 'object', properties: { fetch_failed: { type: 'boolean' }, passage: { type: 'string' }, context: { type: 'string' }, publisher: { type: 'string' }, published: { type: 'string' }, reliability: { type: 'string', enum: ['high', 'medium', 'low'] }, origin: { type: 'string' }, freshness: { type: 'string', enum: ['fresh', 'stale', 'superseded', 'na', 'unknown'] }, support: { type: 'string', enum: ['full', 'partial', 'none', 'unknown'] }, support_reason: { type: 'string' } }, required: ['fetch_failed', 'passage', 'reliability', 'origin', 'support'] }
+const S_SNIPPET = { type: 'object', properties: { snippet: { type: 'string' }, reliability: { type: 'string', enum: ['high', 'medium', 'low'] }, origin: { type: 'string' }, freshness: { type: 'string', enum: ['fresh', 'stale', 'superseded', 'na', 'unknown'] }, support: { type: 'string', enum: ['full', 'partial', 'none', 'unknown'] }, support_reason: { type: 'string' } }, required: ['snippet', 'reliability', 'origin', 'support'] }
+const S_SUPPORT = { type: 'object', properties: { support: { type: 'string', enum: ['full', 'partial', 'none', 'unknown'] }, support_reason: { type: 'string' } }, required: ['support'] }
+
+// Fetch (or, in snippet mode, search) once per URL and quote. The first claim that asks
+// gets its support judged in the same call; the result is stored under that claim's key.
+function acquire(url, quote, claimText, phaseName) {
+  const key = quoteKey(url, quote)
+  if (acquisitions[key]) return acquisitions[key]
+  acquisitions[key] = (async () => {
+    const acq = { key, acquisition: 'unavailable', text: '', source: { reliability: 'low', freshness: 'unknown' }, note: null, assessed: null }
+    const judged = (r) => ({ claimHash: textHash(claimText), support: r.support, support_reason: r.support_reason || '' })
+    let fetchFailed = false
+    if (!degraded && fetchesUsed < FETCH_BUDGET) {
+      fetchesUsed++
+      const r = await agent('WebFetch로 이 URL을 가져와라: ' + url + '\nWebFetch 프롬프트: "다음 구절이나 거의 같은 구절이 페이지에 있으면 그 구절을 원문 그대로 반환하고, 그 구절이 든 문장 전체와 앞뒤 한 문장도 원문 그대로 반환하라. 없으면 NOT FOUND라고만 답하라: ' + quote + '"\n가져오기가 실패하면(오류, 차단, 빈 페이지) fetch_failed를 true로 하라. passage에는 WebFetch가 돌려준 구절을, context에는 그 구절이 든 문장과 앞뒤 문장을 원문 그대로 넣어라. NOT FOUND면 둘 다 빈 문자열이다.\n' + RUBRIC + '\n' + SUPPORT_RUBRIC + '\n\n주장: ' + claimText + '\n인용: ' + quote, { schema: S_CHECK, phase: phaseName, label: 'fetch:' + textHash(key).slice(0, 6), effort: 'low' })
+      if (r) {
+        acq.source = { reliability: r.reliability, origin: r.origin || undefined, publisher: r.publisher, published: r.published, freshness: r.freshness || 'unknown' }
+        if (r.fetch_failed) {
+          failedHosts.add(hostOf(url))
+          acq.note = 'fetch failed'
+          if (failedHosts.size >= 3 && !degraded) { degraded = true; log('원문 대조 불가 모드: 서로 다른 호스트 3곳에서 페이지 가져오기 실패') }
+          fetchFailed = true
+        } else {
+          acq.acquisition = 'full_page'
+          acq.text = r.context && r.context.includes(r.passage || '') ? r.context : (r.passage || '') + (r.context ? '\n' + r.context : '')
+          acq.assessed = judged(r)
+          return acq
+        }
       }
     }
-  }
-  if (degraded || fetchFailed) {
-    const r = await agent('WebSearch로 다음 인용문을 따옴표로 묶어 검색하라: "' + quote + '"\n검색 결과의 제목이나 요약에 이 인용이 (따옴표, 대소문자, 공백 차이를 빼고) 그대로 들어 있으면 in_snippet을 true로 하고 그 스니펫을 넣어라. 원래 URL: ' + url + '\n' + rubric + '\n\n주장: ' + claimText, { schema: S_SNIPPET, phase: phaseName, label: 'snippet:' + e.id, effort: 'low' })
-    if (r) {
-      Object.assign(e, { reliability: r.reliability, origin: r.origin || undefined, support: r.support })
-      const m = LIB.matchQuote(quote, r.snippet || '')
-      e.quote_status = r.in_snippet || m.status !== 'u' ? 'snippet' : 'u'
+    if (degraded || fetchFailed) {
+      const r = await agent('WebSearch로 다음 인용문을 따옴표로 묶어 검색하라: "' + quote + '"\n검색 결과에서 원래 URL(' + url + ') 또는 같은 원출처의 결과를 찾아, 그 결과의 제목과 요약 텍스트를 snippet에 원문 그대로 넣어라. 맞는 결과가 없으면 snippet은 빈 문자열이다. 인용과 비슷하게 고쳐 쓰지 마라.\n' + RUBRIC + '\n' + SUPPORT_RUBRIC + '\n\n주장: ' + claimText, { schema: S_SNIPPET, phase: phaseName, label: 'snippet:' + textHash(key).slice(0, 6), effort: 'low' })
+      if (r) {
+        acq.source = { reliability: r.reliability, origin: r.origin || undefined, freshness: r.freshness || 'unknown' }
+        if (r.snippet) {
+          acq.acquisition = 'snippet'
+          acq.text = r.snippet
+          acq.assessed = judged(r)
+        }
+      }
+    } else if (fetchesUsed >= FETCH_BUDGET && !acq.note) {
+      acq.note = 'unchecked (budget)'
     }
-  } else if (fetchesUsed >= FETCH_BUDGET && e.quote_status === 'u' && !e.note) {
-    e.note = 'unchecked (budget)'
+    return acq
+  })()
+  return acquisitions[key]
+}
+
+async function assess(aKey, acq, claimHash, quote, claimText, phaseName) {
+  if (!assessments[aKey]) {
+    assessments[aKey] = (async () => {
+      if (acq.assessed && acq.assessed.claimHash === claimHash) return { support: acq.assessed.support, support_reason: acq.assessed.support_reason }
+      const r = await agent(SUPPORT_RUBRIC + '\n\n주장: ' + claimText + '\n인용: ' + quote + '\n인용의 문맥(원문): ' + acq.text, { schema: S_SUPPORT, phase: phaseName, label: 'support:' + textHash(aKey).slice(0, 6), effort: 'low' })
+      return r ? { support: r.support, support_reason: r.support_reason || '' } : { support: 'unknown', support_reason: 'no assessment returned' }
+    })()
   }
+  return assessments[aKey]
+}
+
+// claimId is the graph claim id when the caller has one; the claim text hash is always
+// part of the key, so the same id with new text is assessed again.
+async function checkEvidence(url, quote, claimText, phaseName, claimId) {
+  const qKey = quoteKey(url, quote)
+  const claimHash = textHash(claimText)
+  const ownKey = (claimId || '') + '\u0000' + claimHash + '\u0000' + qKey
+  if (evidenceByKey[ownKey]) return evidenceByKey[ownKey]
+  const e = { id: 'E' + (evidence.length + 1), url, url_normalized: LIB.normalizeUrl(url) || null, quote, claim: claimText, claim_id: claimId || null, claim_hash: claimHash, quote_key: textHash(qKey), reliability: 'low', quote_status: 'u', support: 'unknown', freshness: 'unknown', acquisition: 'unavailable', policy: LIB.POLICY_VERSION }
+  evidence.push(e)
+  evidenceByKey[ownKey] = e
+  if (!url || !quote) { e.note = 'missing url or quote'; return e }
+  const acq = await acquire(url, quote, claimText, phaseName)
+  Object.assign(e, acq.source, { acquisition: acq.acquisition })
+  if (acq.note) e.note = acq.note
+  if (acq.acquisition === 'unavailable') return e
+  const m = LIB.matchQuote(quote, acq.text)
+  e.match = { matcher: m.matcher, reason: m.reason, span: m.span || null, score: m.score, content_hash: textHash(acq.text) }
+  // A snippet proves only what its own text contains, and only verbatim.
+  e.quote_status = acq.acquisition === 'snippet' ? (m.status === 'v' ? 'snippet' : m.status === 'n' ? 'n' : 'u') : m.status
+  if (e.quote_status === 'u') return e
+  e.assessment_key = [claimId || '', claimHash, e.quote_key, e.match.content_hash, LIB.POLICY_VERSION].join('|')
+  const a = await assess(e.assessment_key, acq, claimHash, quote, claimText, phaseName)
+  e.support = a.support
+  e.support_reason = a.support_reason
   return e
 }
 
-async function checkClaims(claims, phaseName) {
-  return parallel((claims || []).map((c) => () => (c.url && c.quote ? checkEvidence(c.url, c.quote, c.text, phaseName) : Promise.resolve(null))))
+// ids, when given, are the graph claim ids of the claims in the same order.
+async function checkClaims(claims, phaseName, ids) {
+  return parallel((claims || []).map((c, i) => () => (c.url && c.quote ? checkEvidence(c.url, c.quote, c.text, phaseName, ids && ids[i]) : Promise.resolve(null))))
 }
 
-const isChecked = (e) => !!e && ['v', 'n', 'snippet'].includes(e.quote_status) && e.support !== 'none'
+const isChecked = (e) => !!e && LIB.eligible(e)
+
+// How each piece of evidence was obtained; the report states this instead of one global mode.
+function verificationSummary() {
+  const out = { full_page: 0, snippet: 0, unavailable: 0, review_required: 0 }
+  for (const e of evidence) {
+    if (out[e.acquisition] !== undefined) out[e.acquisition]++
+    if (e.quote_status === 'n') out.review_required++
+  }
+  out.label = out.snippet && out.full_page ? '혼합: 일부 근거만 스니펫 수준' : out.snippet ? '스니펫 수준 검증' : '원문 대조'
+  return out
+}
 
 async function buildFactBase(question, asOf, extra) {
   const facts = await agent('[Prime Directive] 사실적 정확성이 유일한 기준이다.\n질문: ' + question + '\n기준 시점: ' + asOf + '\n\n세 방향으로 WebSearch를 한 번씩 하라: 찬성 근거, 반대 근거, 최신 현황. 논쟁적 공적 주장이면 기존 팩트체크 기사부터 찾는다. ' + (extra || '') + '판정에 중요한 사실 3-6개를 골라 각각 URL과 검색 결과에 나온 50단어 이하 원문 구절을 적어라. 구절을 지어내지 마라.', { schema: S_FACTS, phase: 'Fact base', label: 'fact-base' })
@@ -554,11 +764,11 @@ phase('Report')
 const data = {
   question: A.question, as_of: AS_OF, roster: drafts.map((x) => ({ label: x.p.label, family: x.p.family })),
   roster_kind: new Set(A.roster.map((p) => p.family)).size < 2 ? '동종 명단' : '이질 명단',
-  mode: degraded ? '원문 대조 불가: 스니펫 수준 검증' : '원문 대조',
+  verification: verificationSummary(),
   fact_base: FB.list.map((f, i) => ({ id: 'F' + (i + 1), claim: f.claim, url: f.url, check: FB.evs[i] && FB.evs[i].quote_status })),
   hypotheses: H, matrix: { rows: rated, summary: matrix }, distributions: dists, pooled, ranking,
   premortem: premortem && { causes: premortem.causes, underconfidence: premortem.underconfidence, evidence: premortemEvs.filter(Boolean).map((e) => ({ id: e.id, url: e.url, check: e.quote_status, support: e.support })) },
-  evidence: evidence.map((e) => ({ id: e.id, url: e.url, quote: e.quote, reliability: e.reliability, check: e.quote_status, support: e.support, note: e.note })),
+  evidence: evidence.map((e) => ({ id: e.id, url: e.url, quote: e.quote, reliability: e.reliability, acquisition: e.acquisition, check: e.quote_status, check_reason: e.match ? e.match.reason : null, support: e.support, support_reason: e.support_reason, note: e.note })),
   budget: { fetches: fetchesUsed + '/' + FETCH_BUDGET, failed_hosts: [...failedHosts] },
 }
 const report = await agent('아래 JSON은 Colosseum 진단 모드 결과다. 이 데이터만으로 한국어 보고서를 써라. 데이터에 없는 사실을 보태지 마라. 형식:\n\n=== COLOSSEUM (진단) ===\n질문, 기준 시점, 명단(이질/동종), 모드\n## 가설 (id와 내용)\n## 원인 확률 (풀링된 확률 순위, UNCALIBRATED. 참가자별 분포 요약)\n## 증거 행렬 (진단적 증거만 표로: 증거, 대조 결과, 신뢰도, 가설별 C/I/N. 제외된 비진단적 증거 수)\n## 불일치 점수 (가설별 가중 불일치와 약한 증거에 기댄 불일치 수. 이 점수는 설명용이며 확률을 정하지 않았다고 밝힌다)\n## 사전부검 (원인과 확인 방법, 증거 반영/기각)\n## 이 결론이 틀릴 수 있는 조건\n## 출처\n\n' + JSON.stringify(data), { phase: 'Report', label: 'report' })

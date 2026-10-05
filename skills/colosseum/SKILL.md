@@ -20,8 +20,8 @@ metadata:
 2. 참가자는 기본 3명이다. 가능하면 최소 1명은 Claude가 아닌 모델 계열로 채운다. 전원이 같은 계열이면 결과에 "동종 명단"이라고 표기한다.
 3. 참가자는 익명 라벨(A, B, C)로만 서로를 본다. 모델명, 관점, 확률은 다른 참가자와 배심원에게 공개하지 않는다. 라벨은 라운드마다 다시 섞는다.
 4. 초안은 병렬로, 서로 모르는 상태에서 쓴다. 초안이 모이면 먼저 투표 기준선과 풀링 확률 P0를 계산해 기록한다.
-5. 팩트 클레임에는 URL과 50단어 이하 원문 인용이 붙어야 한다. 인용은 페이지와 대조해 v(일치), n(근접), u(미확인)로 분류하고, u는 증거로 0점이다. 환경 문제로 페이지 가져오기가 전부 실패하면 "원문 대조 불가" 모드로 전환해 검색 스니펫에 들어 있는 인용을 약한 증거로 인정한다.
-6. 입장 변경은 v 또는 n 인용 증거(원문 대조 불가 모드에서는 스니펫 인용 포함), 혹은 이름을 댈 수 있는 논리 오류를 근거로 할 때만 인정한다. 그 밖의 변경은 CONFORMITY_FLIP으로 기록하고 수렴에 세지 않는다.
+5. 팩트 클레임에는 URL과 50단어 이하 원문 인용이 붙어야 한다. 인용은 페이지와 대조해 v(연속 구간 일치), n(검토 필요: 근접 일치나 조건절을 뺀 인용), u(미확인)로 분류한다. 부호, 숫자, 부정어, 비교 표현이 다르면 u다. n과 u는 증거로 0점이다. 지지 판정(support)은 주장마다 따로 한다. 환경 문제로 페이지 가져오기가 실패하면 실제 검색 스니펫 텍스트에 인용이 그대로 들어 있을 때만 약한 증거(snippet)로 인정하고, 증거마다 획득 방식을 기록한다.
+6. 입장 변경은 근거 자격을 갖춘 증거(v 또는 snippet, support full/partial, superseded 아님), 혹은 이름을 댈 수 있는 논리 오류를 근거로 할 때만 인정한다. 그 밖의 변경은 CONFORMITY_FLIP으로 기록하고 수렴에 세지 않는다.
 7. 토론은 기본 1라운드, 상한 3라운드다. 새 검증 증거로 바뀐 입장이 없는 라운드가 나오면 즉시 끝낸다.
 8. 최종 답이 투표 기준선과 다르려면 세 조건이 모두 필요하다: 소수 핵심 주장의 인용 재확인(v), 다수 반박의 검증 실패, 다른 계열(없으면 새) 배심원의 독립 동의.
 9. 공격 전에 상대 주장을 3문장 이내로 재진술한다(스틸맨). 상대가 왜곡이라고 판정하면 그 공격은 무효다.
@@ -61,6 +61,21 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/colosseum.py" --data "${CLAUDE_PLUGIN_DATA}
 COLOSSEUM_JSON
 ```
 
+## 실행 열기, 재개, 재시작
+
+질문 원문은 JSON 문자열로 표준입력에 넘긴다. 질문 해시가 실행에 묶이고, 이후 기본 입력 파일은 이 실행의 디렉터리에서만 읽힌다.
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/scripts/colosseum.py" --data "${CLAUDE_PLUGIN_DATA}" start --session "${CLAUDE_SESSION_ID}" --stakes medium --question-file - <<'COLOSSEUM_JSON'
+{"question": "..."}
+COLOSSEUM_JSON
+```
+
+- 결과의 `run_id`와 `run_dir`을 기억한다.
+- 이미 실행 중이라는 거부가 나오면, 같은 질문을 이어 가는 경우 `CTL resume --session ... --expect-question-sha <question_sha256>`로 체크포인트부터 재개하고, 새 질문이면 `CTL restart --session ... --question-file -`로 새 실행을 연다. 이전 실행의 파일은 그 실행의 디렉터리에 남고 새 실행에 섞이지 않는다.
+- 체크포인트 버전이 맞지 않는다는 거부가 나오면 `restart`만 가능하다.
+- 지난 실행의 파일을 다시 볼 때는 `CTL verdict --session ... --run <run_id>`처럼 `--run`을 명시한다.
+
 ## 워크플로 모드
 
 1. 질문을 파싱한다(TYPE, STAKES, AS_OF). TYPE에 따라 워크플로를 고른다. 질문 하나에 여러 유형이 섞이면 질문이 최종적으로 묻는 것을 기준으로 하나를 고른다.
@@ -76,22 +91,22 @@ COLOSSEUM_JSON
 | creative (아이디어, 이름 짓기) | `colosseum:ideate` | 선택: `criteria` |
 
    확률 예측은 해소 기준과 해소 시점이 명확해야 한다. 질문에서 정할 수 없으면 사용자에게 물어서 정한다. `extremize`는 `CTL forecast fit`의 `a` 값을 쓴다(기록이 부족하면 1.0). `forecast_id`는 `AS_OF`와 질문 요약으로 만든다.
-2. `python3`와 Bash가 있으면 `CTL start --session "${CLAUDE_SESSION_ID}" --stakes <stakes>`로 실행을 연다. 훅의 예산 강제와 출처 기록이 이때부터 작동한다.
+2. `python3`와 Bash가 있으면 아래 "실행 열기"대로 실행을 연다. 훅의 예산 강제와 출처 기록이 이때부터 작동한다.
 3. 명단을 만든다. 참가자는 3명이고 라벨 A, B, C를 무작위 순서로 배정한다. 위 도구 목록에 외부 CLI가 있으면 [references/protocol.md](references/protocol.md) §1.3 규칙대로 넣는다. 각 항목은 `{"label": "A", "family": "claude"}` 또는 `{"label": "B", "family": "gemini", "cli": "gemini"}` 형태다. debate에서는 명단에 넣지 않은 CLI를 `cli_juror`로 지정한다.
-4. 고른 워크플로를 Workflow 도구로 호출한다. 공통 args는 `{"question": 원문 질문, "as_of": "YYYY-MM-DD", "stakes": ..., "roster": [...]}`이고, 표의 추가 args를 더한다. 이 스킬을 호출한 것 자체가 워크플로 실행에 대한 사용자의 동의다.
+4. 고른 워크플로를 Workflow 도구로 호출한다. 공통 args는 `{"question": 원문 질문, "as_of": "YYYY-MM-DD", "stakes": ..., "roster": [...], "run_id": start가 돌려준 run_id}`이고, 표의 추가 args를 더한다. 이 스킬을 호출한 것 자체가 워크플로 실행에 대한 사용자의 동의다.
 5. 워크플로는 백그라운드에서 돈다. 완료 알림을 기다리고, 그동안 결과를 추측해 쓰지 않는다.
 6. 결과의 `report`를 사용자에게 그대로 보여 준다. 다시 요약하거나 고쳐 쓰지 않는다.
 7. `python3`가 있으면 마무리한다.
    - debate: 결과의 `graph`를 `CTL verdict --session ... --file -`에 heredoc으로 넘겨 Python 엔진으로 판정을 다시 계산한다. `conflicts[].verdict`가 결과의 `verdict.conflicts`와 다르면 보고서 끝에 "판정 교차 검증 불일치"를 덧붙인다.
    - forecast(확률): 결과의 `record`를 `CTL forecast add`에 heredoc으로 넘겨 예측 기록에 남긴다. 해소 시점이 지나면 `CTL forecast resolve --id <id> --outcome 0|1`로 결과를 기록하고, `CTL forecast score`로 Brier 점수와 보정 구간을 본다.
-   - 모든 워크플로: `CTL finish --session ...`로 실행을 닫는다.
+   - 모든 워크플로: `CTL finish --session ...`로 실행을 닫는다. 워크플로가 실패하면 `CTL fail --session ... --reason "<사유>"`, 사용자가 중단하면 `CTL cancel --session ...`로 닫는다.
 8. 워크플로가 실패하거나 비활성화되어 있으면 스크립트 모드로 처음부터 진행하고, 그 사실을 결과 머리에 적는다. 예측, 진단, 창작 질문도 스크립트 모드에서는 [references/modes.md](references/modes.md)의 절차를 손으로 따른다.
 
 ## 스크립트 모드
 
 | 단계 | 중재자가 할 일 | 명령 |
 |------|--------------|------|
-| 시작 | 질문을 파싱한다(TYPE, STAKES, AS_OF, 명단). 결과의 `run_dir`을 기억한다 | `CTL start --session "${CLAUDE_SESSION_ID}" --stakes <low/medium/high>` |
+| 시작 | 질문을 파싱한다(TYPE, STAKES, AS_OF, 명단). 결과의 `run_id`와 `run_dir`을 기억한다 | 위 "실행 열기"의 `CTL start ... --question-file -` (heredoc) |
 | Phase 1 | 사실 기반 검색 3회, 상위 페이지 가져오기, 인용 대조 | `CTL advance --session ... --to fact_base` |
 | Phase 2 | 참가자 3명을 병렬 호출해 초안(role: draft)을 받는다. 인용을 대조한다 | `CTL advance --session ... --to drafts` |
 | Phase 2a | 초안을 drafts 형식으로 정리해 기준선을 계산한다 | `CTL baseline --session ... --file -` (heredoc) |
@@ -104,7 +119,7 @@ COLOSSEUM_JSON
 세부 규칙:
 
 - 참가자 호출: Agent 도구의 subagent_type으로 `colosseum:participant`를 쓴다. 목록에 없으면(수동 설치) `general-purpose`를 쓰고 [references/formats.md](references/formats.md) §1의 JSON 턴 형식과 Prime Directive([references/protocol.md](references/protocol.md) §3)를 프롬프트에 넣는다. 같은 단계의 참가자는 한 메시지에서 병렬로 호출한다.
-- 인용 대조: WebFetch 프롬프트는 "다음 구절이나 거의 같은 구절이 페이지에 있으면 원문 그대로 반환하고, 없으면 NOT FOUND라고만 답하라: [인용]"으로 한다. 반환된 텍스트와 인용을 `CTL quote --session ... --stdin`에 heredoc으로 `{"id": "E1", "quote": "...", "page": "..."}` 형태로 넘겨 분류한다. 가져오기가 실패하면 `CTL fetch-failed --session ... --url <URL>`을 실행한다. 결과에 `"degraded": true`가 나오면 원문 대조 불가 모드로 전환한다.
+- 인용 대조: WebFetch 프롬프트는 "다음 구절이나 거의 같은 구절이 페이지에 있으면 그 구절과 그 구절이 든 문장 전체 및 앞뒤 한 문장을 원문 그대로 반환하고, 없으면 NOT FOUND라고만 답하라: [인용]"으로 한다. 반환된 텍스트와 인용을 `CTL quote --session ... --stdin`에 heredoc으로 `{"id": "E1", "quote": "...", "page": "..."}` 형태로 넘겨 분류한다. 가져오기가 실패하면 `CTL fetch-failed --session ... --url <URL>`을 실행한다. 결과에 `"degraded": true`가 나오면 원문 대조 불가 모드로 전환한다. 결과가 n이면 "검토 필요"로 두고 증거로 쓰지 않는다. 지지 판정(support)은 인용을 쓴 주장마다 따로 내린다.
 - 판정: `CTL verdict`의 `conflicts[].verdict`를 충돌 판정으로 쓰고, 표기는 [references/formats.md](references/formats.md) §3 끝의 대응표를 따른다. LLM이 판단하는 몫은 관계 유형과 지지 수준(`support`)을 정하는 일, 그리고 배심원의 두 순서 판정뿐이다. 엔진 판정과 배심원 판정이 다르면 둘 다 보고하고 조건부로 표기한다.
 - 점검표: `CTL metrics`의 결과를 증거 품질 점검표에 그대로 옮긴다. 단일 가중 점수는 만들지 않는다.
 - 훅: 플러그인으로 설치된 경우 검색과 페이지 가져오기 예산, 블라인드 단계의 메시지 차단, 참가자 턴 형식 검사를 훅이 강제한다. 훅이 거부한 호출은 다시 시도하지 않는다.

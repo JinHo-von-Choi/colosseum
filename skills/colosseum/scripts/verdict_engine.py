@@ -30,8 +30,9 @@ def build(doc):
     ev = {e["id"]: e for e in doc["evidence"]}
     nodes = {c["id"]: c for c in doc["claims"] if c.get("status", "active") == "active"}
     tau = {n: G.base_score(c, ev) for n, c in nodes.items()}
-    att = [r for r in doc["relations"] if r["type"] == "attack" and r["from"] in nodes and r["to"] in nodes]
-    sup = [r for r in doc["relations"] if r["type"] == "support" and r["from"] in nodes and r["to"] in nodes]
+    relations = G.dedupe_relations(doc["relations"])
+    att = [r for r in relations if r["type"] == "attack" and r["from"] in nodes and r["to"] in nodes]
+    sup = [r for r in relations if r["type"] == "support" and r["from"] in nodes and r["to"] in nodes]
     defeats = set()
     demoted = []
     for r in att:
@@ -149,6 +150,7 @@ def verdict(doc, theta=THETA):
     canonical = json.dumps(doc, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     out = {
         "input_sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16],
+        "policy": G.POLICY_VERSION,
         "theta": theta,
         "labels": dict(sorted(lab.items())),
         "status": dict(sorted(st.items())),

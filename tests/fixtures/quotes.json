@@ -2,7 +2,7 @@
  "page": "# Hybrid working from home improves retention without damaging performance\n\nWorking from home is becoming increasingly popular. Resignations fell by 33% among workers who shifted from full-time office work to a hybrid schedule, with the largest drops among women, non-managers and employees with long commutes. Hybrid work had no effect on performance reviews or promotions over the following two years.\n\nThe experiment involved 1,612 graduate engineers and marketing and finance employees of a large Chinese technology company, Trip.com. Employees born in odd years were assigned to work from home on Wednesdays and Fridays.\n\n> “These results show that hybrid WFH is a win-win,” the authors wrote.\n\nSee [the full paper](https://example.org/paper.pdf) for details.",
  "cases": [
   {"quote": "Resignations fell by 33% among workers who shifted from full-time office work to a hybrid schedule", "expect": "v"},
-  {"quote": "resignations fell by 33 percent among workers who shifted from full-time office work to a hybrid schedule", "expect": "n"},
+  {"quote": "resignations fell by 33 percent among workers who shifted from full-time office work to a hybrid schedule", "expect": "u"},
   {"quote": "Hybrid work had no effect on performance reviews or promotions", "expect": "v"},
   {"quote": "Hybrid work had no effect on performance reviews or promotions over the next two years", "expect": "n"},
   {"quote": "The experiment involved 1,612 graduate engineers", "expect": "v"},

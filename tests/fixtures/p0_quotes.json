@@ -1,0 +1,28 @@
+{
+ "about": "Quote reversals that quote-match/1 accepted, each paired with a control that must still pass. expect is the status; reason_prefix, when given, must start the reason.",
+ "pages": {
+  "en": "The drug is not effective in adults. Revenue fell −5.2% year on year. The firm has more than 50 employees. If the patient is over 65, the dose must be halved. Prices rose 3% in 2024, the agency said.",
+  "ko": "재택근무를 병행한 직원의 퇴사율은 33% 낮아졌고 성과 평가에는 차이가 없었다. 65세 이상인 경우 용량을 절반으로 줄인다. 이 약은 성인에게 효과가 없다. 직원은 50명 이상이다."
+ },
+ "cases": [
+  {"page": "en", "quote": "The drug is effective in adults", "expect": "u", "defect": "negation removed", "reason_prefix": "negation"},
+  {"page": "en", "quote": "The drug is not effective in adults", "expect": "v", "control": true},
+  {"page": "en", "quote": "Revenue fell +5.2% year on year", "expect": "u", "defect": "sign flipped"},
+  {"page": "en", "quote": "Revenue fell 5.2% year on year", "expect": "u", "defect": "sign dropped"},
+  {"page": "en", "quote": "Revenue fell -5.2% year on year", "expect": "v", "control": true, "note": "ASCII hyphen for U+2212"},
+  {"page": "en", "quote": "Revenue  fell −5.2%   year on year", "expect": "v", "control": true, "note": "whitespace differences"},
+  {"page": "en", "quote": "The firm has less than 50 employees", "expect": "u", "defect": "comparison switched"},
+  {"page": "en", "quote": "The firm has more than 50 employees", "expect": "v", "control": true},
+  {"page": "en", "quote": "the dose must be halved", "expect": "n", "defect": "condition clause dropped", "reason_prefix": "quote leaves out"},
+  {"page": "en", "quote": "If the patient is over 65, the dose must be halved.", "expect": "v", "control": true},
+  {"page": "en", "quote": "“Prices rose 3% in 2024,” the agency said", "expect": "v", "control": true, "note": "curly quotes"},
+  {"page": "en", "quote": "Prices rose 3% in 2023", "expect": "u", "defect": "year changed"},
+  {"page": "ko", "quote": "이 약은 성인에게 효과가 있다", "expect": "u", "defect": "Korean negation flipped"},
+  {"page": "ko", "quote": "이 약은 성인에게 효과가 없다", "expect": "v", "control": true},
+  {"page": "ko", "quote": "직원은 50명 미만이다", "expect": "u", "defect": "Korean range switched"},
+  {"page": "ko", "quote": "직원은 50명 이상이다", "expect": "v", "control": true},
+  {"page": "ko", "quote": "용량을 절반으로 줄인다", "expect": "n", "defect": "Korean condition dropped", "reason_prefix": "quote leaves out"},
+  {"page": "ko", "quote": "65세 이상인 경우 용량을 절반으로 줄인다", "expect": "v", "control": true},
+  {"page": "ko", "quote": "퇴사율은 33% 낮아졌고", "expect": "v", "control": true}
+ ]
+}

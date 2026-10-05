@@ -22,8 +22,8 @@ CORROBORATION_TARGET = 2
 
 
 def _checked(e, level):
-    ok = {"v", "n"} if level == "quote" else {"v", "n", "snippet"}
-    return e["quote_status"] in ok and e["support"] != "none"
+    ok = {"v"} if level == "quote" else {"v", "snippet"}
+    return e["quote_status"] in ok and G.eligible(e)
 
 
 def checklist(doc, high_stakes=False):
@@ -37,7 +37,7 @@ def checklist(doc, high_stakes=False):
 
     target = CORROBORATION_TARGET + (1 if high_stakes else 0)
     rows = {"decisive": [0, 0, 0], "supporting": [0, 0, 0]}  # quote-verified, snippet-only, total
-    corroboration, unverified, quality = {}, [], defaultdict(int)
+    corroboration, unverified, review, quality = {}, [], [], defaultdict(int)
     for f in final:
         c = claims[f["claim"]]
         if c.get("kind", "fact") in G.VALUE_KINDS:
@@ -53,6 +53,8 @@ def checklist(doc, high_stakes=False):
             quality[e["reliability"]] += 1
             if e["quote_status"] == "u":
                 unverified.append(e["id"])
+            elif e["quote_status"] == "n":
+                review.append(e["id"])
         if bucket == "decisive":
             origins = {G.origin_of(e) for e in cited if _checked(e, "snippet")}
             corroboration[c["id"]] = len(origins)
@@ -74,6 +76,7 @@ def checklist(doc, high_stakes=False):
                           "below_target": sorted(k for k, v in corroboration.items() if v < target)},
         "origin_diversity": diversity,
         "unverified_quotes": sorted(set(unverified)),
+        "review_required": sorted(set(review)),
     }
 
 

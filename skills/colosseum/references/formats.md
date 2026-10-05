@@ -49,7 +49,7 @@
 - `family`: 모델 계열. Claude 서브에이전트는 모두 `claude`다.
 - `position`: 중재자가 붙인 입장 묶음 ID. 의미가 같은 초안은 같은 ID를 받는다.
 - `probability`: 그 참가자가 자기 입장이 옳다고 본 확률.
-- `verified_counter`: v 또는 n 인용으로 뒷받침되는 STRONGEST_COUNTER가 하나라도 있으면 true.
+- `verified_counter`: 근거 자격(v, support full/partial)을 갖춘 인용으로 뒷받침되는 STRONGEST_COUNTER가 하나라도 있으면 true.
 
 결과의 `baseline_vote`, `p0`, `skip_debate`, `needs_dissenter`를 그대로 따른다.
 
@@ -57,9 +57,11 @@
 
 ```json
 {
+  "schema": "colosseum.arggraph/v2",
   "evidence": [
     {"id": "E1", "url": "https://...", "quote": "...", "reliability": "high",
-     "quote_status": "v", "support": "full", "freshness": "fresh", "origin": "nature:bloom2024"}
+     "quote_status": "v", "support": "full", "freshness": "fresh", "origin": "nature:bloom2024",
+     "claim_id": "A.c1", "acquisition": "full_page"}
   ],
   "claims": [
     {"id": "A.c1", "author": "A", "text": "...", "kind": "fact", "evidence": ["E1"]}
@@ -78,18 +80,19 @@
 | 필드 | 값 |
 |------|----|
 | `reliability` | high(1차 자료, 공식 문서, 동료 심사) / medium(주요 언론, 전문가 블로그) / low(커뮤니티, 출처 불명) |
-| `quote_status` | v / n / snippet / u (인용 대조 결과) |
-| `support` | full / partial / none (주장과 인용만 보고 판단한 지지 수준) |
-| `freshness` | fresh / stale / superseded / na |
+| `quote_status` | v(연속 구간 일치) / snippet(스니펫 텍스트에 그대로 있음) / n(검토 필요, 가중치 0) / u(원문에 없음) |
+| `support` | full / partial / none / unknown (이 claim과 이 인용, 그 문맥만 보고 판단한 지지 수준) |
+| `freshness` | fresh / stale / superseded / na(시점과 무관) / unknown(판단 불가, 최신으로 가정하지 않음) |
+| `acquisition` | full_page / snippet / unavailable (선택. 원문을 어떻게 얻었는지) |
 | `origin` | 원출처 군집 ID. 같은 통신 기사, 보도자료, 논문, 데이터셋을 옮긴 증거는 같은 ID. 비우면 URL 호스트로 묶인다 |
 | `subtype` | rebut(결론 반박) / undercut(추론 무력화) / undermine(근거 약화) |
 | `final.weight` | 3 판정을 좌우 / 2 보조 사실 / 1 주변 |
 
 만드는 방법:
 
-1. 참가자 턴의 `claims`마다 claim 하나와 evidence 하나를 만든다. claim ID는 `라벨.c번호`로 쓴다.
+1. 참가자 턴의 `claims`마다 claim 하나와 evidence 하나를 만든다. evidence 하나는 인용 하나를 claim 하나에 묶는다. 같은 인용을 두 주장이 쓰면 evidence도 둘이고 support도 각자 판정한다. claim ID는 라운드, 쟁점, 역할, 라벨, 순번을 담는다(예: `r1.i2.pro.B.0`, 초안은 `r0.i-.draft.A.0`). 같은 라운드에 쟁점이 둘이어도 겹치지 않아야 한다.
 2. 공격은 공격자의 주장에서 대상 주장으로 가는 attack 관계다. 겨냥한 부분이 결론이면 rebut, 근거와 결론을 잇는 추론이면 undercut, 인용된 근거 자체면 undermine이다.
-3. 스틸맨 관문에서 무효가 된 공격은 넣지 않는다. 증거에 근거해 철회된 주장은 `"status": "withdrawn"`으로 표시한다.
+3. 같은 관계를 두 번 넣어도 결과는 같다(엔진이 type, subtype, from, to로 중복을 지운다). 스틸맨 관문에서 무효가 된 공격은 넣지 않는다. 증거에 근거해 철회된 주장은 `"status": "withdrawn"`으로 표시한다.
 4. `conflicts`에는 판정할 쟁점의 대표 주장 쌍을 넣는다.
 5. `final`에는 최종 답에 남긴 팩트 주장을 넣는다.
 
