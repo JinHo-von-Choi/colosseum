@@ -1,6 +1,8 @@
-# Colosseum
+<p align="center">
+  <img src="assets/logo.webp" alt="Colosseum" width="480">
+</p>
 
-[English](README.md)
+<p align="center"><a href="README.md">English</a></p>
 
 Colosseum은 논쟁이 있는 질문을 여러 AI 에이전트가 따로 검토하게 하고, 검증된 근거를 통과한 결론만 남기는 에이전트 스킬이다.
 
