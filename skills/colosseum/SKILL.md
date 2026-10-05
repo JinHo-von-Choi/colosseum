@@ -4,8 +4,8 @@ description: "Runs a web-search-grounded adversarial review of a contested quest
 license: MIT
 metadata:
   author: "최진호"
-  version: "3.3.0-beta.1"
-  updated: "2026-09-30"
+  version: "1.0.0"
+  updated: "2026-10-05"
   category: "Research"
   tags: "multi-ai, critical-thinking, adversarial-debate, fact-checking, web-search, argumentation"
 ---
