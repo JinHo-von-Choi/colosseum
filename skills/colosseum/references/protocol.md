@@ -206,7 +206,7 @@ FACT_BASE 밖의 근거가 필요하면 직접 검색하라(최대 2회).
 
 1. 입장 묶기: 의미가 같은 POSITION끼리 묶는다.
 2. 계열 가중 투표: 같은 모델 계열의 참가자들은 합쳐서 1표로 센다(계열 안에서 다수인 입장이 그 계열의 표). 결과를 BASELINE_VOTE로 기록한다.
-3. 풀링 확률 P0: 다수 입장에 대한 각 참가자의 확률을 구하고(다수 입장 참가자는 PROBABILITY, 반대 입장 참가자는 1 - PROBABILITY), 로그오즈 평균으로 합친다.
+3. 풀링 확률 P0: 다수 입장에 대한 각 참가자의 확률을 구하고(다수 입장 참가자는 PROBABILITY, 반대 입장 참가자는 1 - PROBABILITY), 로그오즈 평균으로 합친다. 입장 묶음이 셋 이상이면 1 - PROBABILITY는 나머지 입장 전체의 확률이므로 다른 입장 수(k - 1)로 나눠 쓰고, 결과에 그 방식을 적는다(`p0_method`). 이때 P0를 이항 확률처럼 "나머지는 1 - P0"로 표시하지 않는다.
 
 ```bash
 python3 -c "import math,sys;p=[min(.98,max(.02,float(x))) for x in sys.argv[1:]];m=sum(math.log(x/(1-x)) for x in p)/len(p);print(round(1/(1+math.exp(-m)),3))" 0.8 0.7 0.35

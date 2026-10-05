@@ -1,6 +1,6 @@
 export const meta = {
   name: 'ideate',
-  description: 'Colosseum creative mode: nominal group technique with silent generation, merge, blind ranking and Borda count',
+  description: 'Colosseum creative mode (experimental): nominal group technique with silent generation, merge, blind ranking and Borda count',
   whenToUse: 'Launched by the colosseum skill for idea generation and naming; not for direct use',
   phases: [
     { title: 'Generate', detail: 'silent parallel idea generation' },
@@ -207,10 +207,11 @@ const LIB = (() => {
   function pooledProbability(drafts, position, a) {
     const famSize = {}
     for (const d of drafts) famSize[d.family] = (famSize[d.family] || 0) + 1
+    const k = new Set(drafts.map((d) => d.position).concat([position])).size
     let acc = 0, total = 0
     for (const d of drafts) {
       const p = clip(d.probability)
-      const pPos = d.position === position ? p : 1 - p
+      const pPos = d.position === position ? p : (1 - p) / Math.max(1, k - 1)
       const w = 1 / famSize[d.family]
       acc += w * logit(clip(pPos))
       total += w
@@ -229,7 +230,7 @@ const LIB = (() => {
     const p0 = pooledProbability(drafts, target, a)
     const homogeneous = vote.families < 2
     const skip = sameSide && !homogeneous && drafts.every((d) => Number(d.probability) >= 0.8) && !doc.verified_counter
-    return { baseline_vote: vote.winner, tie: vote.tie, tally: vote.tally, p0_position: target, p0: Math.round(p0 * 1000) / 1000, extremizing: a, roster: homogeneous ? 'homogeneous' : 'heterogeneous', unanimous: sameSide, skip_debate: skip, needs_dissenter: sameSide && homogeneous, notes }
+    return { baseline_vote: vote.winner, tie: vote.tie, tally: vote.tally, p0_position: target, p0: Math.round(p0 * 1000) / 1000, p0_method: Object.keys(vote.tally).length <= 2 ? 'binary' : 'split over ' + Object.keys(vote.tally).length + ' positions', extremizing: a, roster: homogeneous ? 'homogeneous' : 'heterogeneous', unanimous: sameSide, skip_debate: skip, needs_dissenter: sameSide && homogeneous, notes }
   }
 
   // ---- graph and verdicts (graph.py, verdict_engine.py) ----
@@ -741,10 +742,11 @@ const result = LIB.borda(ballots.map((b) => b.ranking))
 // ============================================================================
 phase('Report')
 const data = {
+  status: 'experimental',
   question: A.question, criteria: CRITERIA, roster: gen.map((g) => ({ label: g.p.label, family: g.p.family })),
   roster_kind: new Set(A.roster.map((p) => p.family)).size < 2 ? '동종 명단' : '이질 명단',
   generated: raw.length, merged: pool, ballots, borda: result.map((r) => Object.assign({}, r, pool.find((m) => m.id === r.id))),
 }
-const report = await agent('아래 JSON은 Colosseum 창작 모드(명목집단법) 결과다. 이 데이터만으로 한국어 보고서를 써라. 형식:\n\n=== COLOSSEUM (창작) ===\n과제, 판단 기준, 명단(이질/동종), 생성 수와 중복 제거 후 수\n## 순위 (표: 순위, 아이디어, 점수, 표를 준 참가자 수, 출처 라벨)\n## 상위 아이디어 설명 (상위 3개, 순위 투표의 이유 요약)\n## 나머지 아이디어 (제목만)\n## 메타 정보 (Borda 방식: 1위에 K점부터 1점까지, 동점은 표를 준 참가자 수로 가림)\n\n' + JSON.stringify(data), { phase: 'Report', label: 'report' })
+const report = await agent('아래 JSON은 Colosseum 창작 모드(명목집단법) 결과다. 이 모드는 실험 단계다(status: experimental). 보고서 첫 줄에 "실험 모드: 정확도와 보정이 검증되지 않았다"를 적어라. 이 데이터만으로 한국어 보고서를 써라. 형식:\n\n=== COLOSSEUM (창작) ===\n과제, 판단 기준, 명단(이질/동종), 생성 수와 중복 제거 후 수\n## 순위 (표: 순위, 아이디어, 점수, 표를 준 참가자 수, 출처 라벨)\n## 상위 아이디어 설명 (상위 3개, 순위 투표의 이유 요약)\n## 나머지 아이디어 (제목만)\n## 메타 정보 (Borda 방식: 1위에 K점부터 1점까지, 동점은 표를 준 참가자 수로 가림)\n\n' + JSON.stringify(data), { phase: 'Report', label: 'report' })
 
 return { report, data }

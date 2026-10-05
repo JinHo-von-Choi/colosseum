@@ -1,6 +1,6 @@
 export const meta = {
   name: 'diagnose',
-  description: 'Colosseum diagnostic mode: competing hypotheses, evidence diagnosticity matrix, pooled probabilities',
+  description: 'Colosseum diagnostic mode (experimental): competing hypotheses, evidence diagnosticity matrix, pooled probabilities',
   whenToUse: 'Launched by the colosseum skill for "why did X happen" questions; not for direct use',
   phases: [
     { title: 'Fact base', detail: 'opposing-angle searches and source records' },
@@ -210,10 +210,11 @@ const LIB = (() => {
   function pooledProbability(drafts, position, a) {
     const famSize = {}
     for (const d of drafts) famSize[d.family] = (famSize[d.family] || 0) + 1
+    const k = new Set(drafts.map((d) => d.position).concat([position])).size
     let acc = 0, total = 0
     for (const d of drafts) {
       const p = clip(d.probability)
-      const pPos = d.position === position ? p : 1 - p
+      const pPos = d.position === position ? p : (1 - p) / Math.max(1, k - 1)
       const w = 1 / famSize[d.family]
       acc += w * logit(clip(pPos))
       total += w
@@ -232,7 +233,7 @@ const LIB = (() => {
     const p0 = pooledProbability(drafts, target, a)
     const homogeneous = vote.families < 2
     const skip = sameSide && !homogeneous && drafts.every((d) => Number(d.probability) >= 0.8) && !doc.verified_counter
-    return { baseline_vote: vote.winner, tie: vote.tie, tally: vote.tally, p0_position: target, p0: Math.round(p0 * 1000) / 1000, extremizing: a, roster: homogeneous ? 'homogeneous' : 'heterogeneous', unanimous: sameSide, skip_debate: skip, needs_dissenter: sameSide && homogeneous, notes }
+    return { baseline_vote: vote.winner, tie: vote.tie, tally: vote.tally, p0_position: target, p0: Math.round(p0 * 1000) / 1000, p0_method: Object.keys(vote.tally).length <= 2 ? 'binary' : 'split over ' + Object.keys(vote.tally).length + ' positions', extremizing: a, roster: homogeneous ? 'homogeneous' : 'heterogeneous', unanimous: sameSide, skip_debate: skip, needs_dissenter: sameSide && homogeneous, notes }
   }
 
   // ---- graph and verdicts (graph.py, verdict_engine.py) ----
@@ -762,6 +763,7 @@ const premortemEvs = premortem ? await checkClaims(premortem.claims, 'Premortem'
 // ============================================================================
 phase('Report')
 const data = {
+  status: 'experimental',
   question: A.question, as_of: AS_OF, roster: drafts.map((x) => ({ label: x.p.label, family: x.p.family })),
   roster_kind: new Set(A.roster.map((p) => p.family)).size < 2 ? '동종 명단' : '이질 명단',
   verification: verificationSummary(),
@@ -771,6 +773,6 @@ const data = {
   evidence: evidence.map((e) => ({ id: e.id, url: e.url, quote: e.quote, reliability: e.reliability, acquisition: e.acquisition, check: e.quote_status, check_reason: e.match ? e.match.reason : null, support: e.support, support_reason: e.support_reason, note: e.note })),
   budget: { fetches: fetchesUsed + '/' + FETCH_BUDGET, failed_hosts: [...failedHosts] },
 }
-const report = await agent('아래 JSON은 Colosseum 진단 모드 결과다. 이 데이터만으로 한국어 보고서를 써라. 데이터에 없는 사실을 보태지 마라. 형식:\n\n=== COLOSSEUM (진단) ===\n질문, 기준 시점, 명단(이질/동종), 모드\n## 가설 (id와 내용)\n## 원인 확률 (풀링된 확률 순위, UNCALIBRATED. 참가자별 분포 요약)\n## 증거 행렬 (진단적 증거만 표로: 증거, 대조 결과, 신뢰도, 가설별 C/I/N. 제외된 비진단적 증거 수)\n## 불일치 점수 (가설별 가중 불일치와 약한 증거에 기댄 불일치 수. 이 점수는 설명용이며 확률을 정하지 않았다고 밝힌다)\n## 사전부검 (원인과 확인 방법, 증거 반영/기각)\n## 이 결론이 틀릴 수 있는 조건\n## 출처\n\n' + JSON.stringify(data), { phase: 'Report', label: 'report' })
+const report = await agent('아래 JSON은 Colosseum 진단 모드 결과다. 이 모드는 실험 단계다(status: experimental). 보고서 첫 줄에 "실험 모드: 정확도와 보정이 검증되지 않았다"를 적어라. 이 데이터만으로 한국어 보고서를 써라. 데이터에 없는 사실을 보태지 마라. 형식:\n\n=== COLOSSEUM (진단) ===\n질문, 기준 시점, 명단(이질/동종), 모드\n## 가설 (id와 내용)\n## 원인 확률 (풀링된 확률 순위, UNCALIBRATED. 참가자별 분포 요약)\n## 증거 행렬 (진단적 증거만 표로: 증거, 대조 결과, 신뢰도, 가설별 C/I/N. 제외된 비진단적 증거 수)\n## 불일치 점수 (가설별 가중 불일치와 약한 증거에 기댄 불일치 수. 이 점수는 설명용이며 확률을 정하지 않았다고 밝힌다)\n## 사전부검 (원인과 확인 방법, 증거 반영/기각)\n## 이 결론이 틀릴 수 있는 조건\n## 출처\n\n' + JSON.stringify(data), { phase: 'Report', label: 'report' })
 
 return { report, data }

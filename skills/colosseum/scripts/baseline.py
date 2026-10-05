@@ -51,14 +51,20 @@ def family_vote(drafts):
 
 
 def pooled_probability(drafts, position, a=1.0):
-    """Weighted log-odds mean of each drafter's probability that `position` is correct."""
+    """Weighted log-odds mean of each drafter's probability that `position` is correct.
+
+    A drafter on another position gave no probability for `position`. With two positions
+    its share is 1 - p. With three or more, 1 - p is the probability of all other positions
+    together, so it is split evenly over them instead of being read as a binary complement.
+    """
     fam_size = defaultdict(int)
     for d in drafts:
         fam_size[d["family"]] += 1
+    k = len({d["position"] for d in drafts} | {position})
     total_w, acc = 0.0, 0.0
     for d in drafts:
         p = _clip(d["probability"])
-        p_pos = p if d["position"] == position else 1 - p
+        p_pos = p if d["position"] == position else (1 - p) / max(1, k - 1)
         w = 1.0 / fam_size[d["family"]]
         acc += w * _logit(_clip(p_pos))
         total_w += w
@@ -93,6 +99,7 @@ def baseline(doc, a=1.0):
         "tally": vote["tally"],
         "p0_position": target,
         "p0": round(p0, 3),
+        "p0_method": "binary" if len(vote["tally"]) <= 2 else "split over %d positions" % len(vote["tally"]),
         "extremizing": a,
         "roster": "homogeneous" if homogeneous else "heterogeneous",
         "unanimous": same_side,

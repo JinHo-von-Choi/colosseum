@@ -212,10 +212,11 @@ const LIB = (() => {
   function pooledProbability(drafts, position, a) {
     const famSize = {}
     for (const d of drafts) famSize[d.family] = (famSize[d.family] || 0) + 1
+    const k = new Set(drafts.map((d) => d.position).concat([position])).size
     let acc = 0, total = 0
     for (const d of drafts) {
       const p = clip(d.probability)
-      const pPos = d.position === position ? p : 1 - p
+      const pPos = d.position === position ? p : (1 - p) / Math.max(1, k - 1)
       const w = 1 / famSize[d.family]
       acc += w * logit(clip(pPos))
       total += w
@@ -234,7 +235,7 @@ const LIB = (() => {
     const p0 = pooledProbability(drafts, target, a)
     const homogeneous = vote.families < 2
     const skip = sameSide && !homogeneous && drafts.every((d) => Number(d.probability) >= 0.8) && !doc.verified_counter
-    return { baseline_vote: vote.winner, tie: vote.tie, tally: vote.tally, p0_position: target, p0: Math.round(p0 * 1000) / 1000, extremizing: a, roster: homogeneous ? 'homogeneous' : 'heterogeneous', unanimous: sameSide, skip_debate: skip, needs_dissenter: sameSide && homogeneous, notes }
+    return { baseline_vote: vote.winner, tie: vote.tie, tally: vote.tally, p0_position: target, p0: Math.round(p0 * 1000) / 1000, p0_method: Object.keys(vote.tally).length <= 2 ? 'binary' : 'split over ' + Object.keys(vote.tally).length + ' positions', extremizing: a, roster: homogeneous ? 'homogeneous' : 'heterogeneous', unanimous: sameSide, skip_debate: skip, needs_dissenter: sameSide && homogeneous, notes }
   }
 
   // ---- graph and verdicts (graph.py, verdict_engine.py) ----
@@ -993,6 +994,6 @@ const data = {
 }
 
 const modeNote = MODE === 'decision' ? '의사결정 모드다. 최종 답변은 권고 형태로 쓰고, 대안(antithesis)과 그 대안으로 갈아타야 할 신호를 "권고가 뒤집히는 조건"으로 적어라.\n' : MODE === 'normative' ? '가치 판단 모드다. 승자를 가리지 말고, 경험적 쟁점의 판정과 "X를 Y보다 중시하면 A, 아니면 B" 형태의 조건부 지도를 최종 답변으로 써라.\n' : ''
-const report = await agent(modeNote + '아래 JSON은 Colosseum 실행 결과다. 이 데이터만으로 한국어 최종 보고서를 써라. 데이터에 없는 사실을 보태지 마라. 형식:\n\n=== COLOSSEUM ===\n질문, 기준 시점, 명단(라벨과 모델 계열, 이질/동종 명단), 진행(라운드 수와 종료 사유), 검증 수준(verification을 그대로: 원문 대조, 스니펫, 획득 불가, 검토 필요 건수. 일부만 스니펫이면 원문 대조라고 쓰지 마라)\n## 초기 팩트 베이스 (대조 결과 표시)\n## 기준선 (초안 입장 A/B/C, BASELINE_VOTE, P0)\n## 라운드별 전개 (표: 라운드, 쟁점, 역할, 인용 v/n/snippet/u, 인정/동조 플립/무효 공격)\n## 충돌 판정 (표: 쟁점, 엔진 판정, 배심원 두 순서 판정. 엔진 라벨 표기: A_WINS→A 우세, B_WINS→B 우세, PARTIAL_BOTH_SURVIVE→쌍방 부분 인정, CONDITIONAL/VALUE_CONDITIONAL→조건부, LOSER_REFUTED_WINNER_UNPROVEN→한쪽 반박됨·다른 쪽 미입증, UNRESOLVED/NEITHER_ESTABLISHED→판정 불가)\n## 반대 입장의 가장 강한 논거\n## 합의 도달 사항\n## 해소되지 않은 쟁점 (조건부 답변, 가치 쟁점 포함)\n## 최종 답변 (팩트 클레임마다 [증거ID], 기준선 대비 일치/역전, P_final과 UNCALIBRATED)\n## 출처 (증거ID, URL, 발행처, 획득 방식, 대조 결과와 사유, 지지 판정)\n## 증거 품질 점검표 (checklist를 그대로 옮김)\n## 메타 정보 (가져오기 예산, 동조 플립, 배심원 계열: ' + jurorFamily + ', 사전부검 반영/기각, 제외된 참가자, 이 답이 틀릴 수 있는 조건)\n\n대조 결과 n은 "검토 필요"로, 검증된 근거로 쓰지 마라. 사전부검에서 대조 결과가 v나 snippet이고 support가 full이나 partial인 증거가 있으면 최종 답변에 그 단서를 반영하고 "반영"으로, 아니면 "기각"으로 적어라. 교착을 합의로 포장하지 마라.\n\n' + JSON.stringify(data), { phase: 'Report', label: 'report' })
+const report = await agent(modeNote + '아래 JSON은 Colosseum 실행 결과다. 이 데이터만으로 한국어 최종 보고서를 써라. 데이터에 없는 사실을 보태지 마라. 형식:\n\n=== COLOSSEUM ===\n질문, 기준 시점, 명단(라벨과 모델 계열, 이질/동종 명단), 진행(라운드 수와 종료 사유), 검증 수준(verification을 그대로: 원문 대조, 스니펫, 획득 불가, 검토 필요 건수. 일부만 스니펫이면 원문 대조라고 쓰지 마라)\n## 초기 팩트 베이스 (대조 결과 표시)\n## 기준선 (초안 입장 A/B/C, BASELINE_VOTE, P0)\n## 라운드별 전개 (표: 라운드, 쟁점, 역할, 인용 v/n/snippet/u, 인정/동조 플립/무효 공격)\n## 충돌 판정 (표: 쟁점, 엔진 판정, 배심원 두 순서 판정. 엔진 라벨 표기: A_WINS→A 우세, B_WINS→B 우세, PARTIAL_BOTH_SURVIVE→쌍방 부분 인정, CONDITIONAL/VALUE_CONDITIONAL→조건부, LOSER_REFUTED_WINNER_UNPROVEN→한쪽 반박됨·다른 쪽 미입증, UNRESOLVED/NEITHER_ESTABLISHED→판정 불가)\n## 반대 입장의 가장 강한 논거\n## 합의 도달 사항\n## 해소되지 않은 쟁점 (조건부 답변, 가치 쟁점 포함)\n## 최종 답변 (팩트 클레임마다 [증거ID], 기준선 대비 일치/역전, P_final과 UNCALIBRATED)\n## 출처 (증거ID, URL, 발행처, 획득 방식, 대조 결과와 사유, 지지 판정)\n## 증거 품질 점검표 (checklist를 그대로 옮김)\n## 메타 정보 (가져오기 예산, 동조 플립, 배심원 계열: ' + jurorFamily + ', 사전부검 반영/기각, 제외된 참가자, 이 답이 틀릴 수 있는 조건)\n\n대조 결과 n은 "검토 필요"로, 검증된 근거로 쓰지 마라. baseline.p0_method가 binary가 아니면 P0와 P_final은 그 입장 하나의 확률이며, 나머지 입장의 확률을 1-P로 적지 마라. 사전부검에서 대조 결과가 v나 snippet이고 support가 full이나 partial인 증거가 있으면 최종 답변에 그 단서를 반영하고 "반영"으로, 아니면 "기각"으로 적어라. 교착을 합의로 포장하지 마라.\n\n' + JSON.stringify(data), { phase: 'Report', label: 'report' })
 
 return { run_id: RUN_ID, report, data, graph: doc, verdict: engine }

@@ -1,6 +1,6 @@
 export const meta = {
   name: 'forecast',
-  description: 'Colosseum forecast mode: Delphi rounds with anonymous feedback, evidence-gated revisions, pooled forecast',
+  description: 'Colosseum forecast mode (experimental): Delphi rounds with anonymous feedback, evidence-gated revisions, pooled forecast',
   whenToUse: 'Launched by the colosseum skill for forecasts and numeric estimates; not for direct use',
   phases: [
     { title: 'Fact base', detail: 'base rates, current state, published forecasts' },
@@ -210,10 +210,11 @@ const LIB = (() => {
   function pooledProbability(drafts, position, a) {
     const famSize = {}
     for (const d of drafts) famSize[d.family] = (famSize[d.family] || 0) + 1
+    const k = new Set(drafts.map((d) => d.position).concat([position])).size
     let acc = 0, total = 0
     for (const d of drafts) {
       const p = clip(d.probability)
-      const pPos = d.position === position ? p : 1 - p
+      const pPos = d.position === position ? p : (1 - p) / Math.max(1, k - 1)
       const w = 1 / famSize[d.family]
       acc += w * logit(clip(pPos))
       total += w
@@ -232,7 +233,7 @@ const LIB = (() => {
     const p0 = pooledProbability(drafts, target, a)
     const homogeneous = vote.families < 2
     const skip = sameSide && !homogeneous && drafts.every((d) => Number(d.probability) >= 0.8) && !doc.verified_counter
-    return { baseline_vote: vote.winner, tie: vote.tie, tally: vote.tally, p0_position: target, p0: Math.round(p0 * 1000) / 1000, extremizing: a, roster: homogeneous ? 'homogeneous' : 'heterogeneous', unanimous: sameSide, skip_debate: skip, needs_dissenter: sameSide && homogeneous, notes }
+    return { baseline_vote: vote.winner, tie: vote.tie, tally: vote.tally, p0_position: target, p0: Math.round(p0 * 1000) / 1000, p0_method: Object.keys(vote.tally).length <= 2 ? 'binary' : 'split over ' + Object.keys(vote.tally).length + ' positions', extremizing: a, roster: homogeneous ? 'homogeneous' : 'heterogeneous', unanimous: sameSide, skip_debate: skip, needs_dissenter: sameSide && homogeneous, notes }
   }
 
   // ---- graph and verdicts (graph.py, verdict_engine.py) ----
@@ -842,6 +843,7 @@ const record = KIND === 'probability' ? {
   extremizing: result.extremizing, market: market && market.usable ? market.probability : null,
 } : null
 const data = {
+  status: 'experimental',
   question: A.question, as_of: AS_OF, kind: KIND, target,
   roster: r1.map((x) => ({ label: x.p.label, family: x.p.family })), roster_kind: new Set(A.roster.map((p) => p.family)).size < 2 ? '동종 명단' : '이질 명단',
   verification: verificationSummary(),
@@ -852,6 +854,6 @@ const data = {
   evidence: evidence.map((e) => ({ id: e.id, url: e.url, quote: e.quote, reliability: e.reliability, acquisition: e.acquisition, check: e.quote_status, check_reason: e.match ? e.match.reason : null, support: e.support, support_reason: e.support_reason, note: e.note })),
   budget: { fetches: fetchesUsed + '/' + FETCH_BUDGET, failed_hosts: [...failedHosts] },
 }
-const report = await agent('아래 JSON은 Colosseum 예측 모드(델파이) 결과다. 이 데이터만으로 한국어 보고서를 써라. 데이터에 없는 사실을 보태지 마라. 형식:\n\n=== COLOSSEUM (예측) ===\n질문, 기준 시점, 해소 기준과 해소 시점(확률 예측일 때), 명단(이질/동종), 델파이 라운드 수와 종료 사유, 모드\n## 초기 팩트 베이스 (대조 결과 표시)\n## 기저율 (참가자별 참조 집단과 기저율)\n## 1차 블라인드 추정 (라벨별 값, 근거)\n## 델파이 수정 이력 (표: 라운드, 라벨, 이전, 제안, 반영, 증거 없는 큰 이동 제한 여부, 새 증거)\n## 공개 예측 (예측시장이나 집단 예측, 대조 결과와 반영 여부)\n## 최종 예측 (확률이면 P0 → P_final과 UNCALIBRATED, 추정이면 초기값 → 최종값과 80% 구간)\n## 사전부검 (원인과 확인 방법, 증거 반영/기각)\n## 이 예측이 틀릴 수 있는 조건 (관찰하면 수정해야 할 신호)\n## 출처\n\n' + JSON.stringify(data), { phase: 'Report', label: 'report' })
+const report = await agent('아래 JSON은 Colosseum 예측 모드(델파이) 결과다. 이 모드는 실험 단계다(status: experimental). 보고서 첫 줄에 "실험 모드: 정확도와 보정이 검증되지 않았다"를 적어라. 이 데이터만으로 한국어 보고서를 써라. 데이터에 없는 사실을 보태지 마라. 형식:\n\n=== COLOSSEUM (예측) ===\n질문, 기준 시점, 해소 기준과 해소 시점(확률 예측일 때), 명단(이질/동종), 델파이 라운드 수와 종료 사유, 모드\n## 초기 팩트 베이스 (대조 결과 표시)\n## 기저율 (참가자별 참조 집단과 기저율)\n## 1차 블라인드 추정 (라벨별 값, 근거)\n## 델파이 수정 이력 (표: 라운드, 라벨, 이전, 제안, 반영, 증거 없는 큰 이동 제한 여부, 새 증거)\n## 공개 예측 (예측시장이나 집단 예측, 대조 결과와 반영 여부)\n## 최종 예측 (확률이면 P0 → P_final과 UNCALIBRATED, 추정이면 초기값 → 최종값과 80% 구간)\n## 사전부검 (원인과 확인 방법, 증거 반영/기각)\n## 이 예측이 틀릴 수 있는 조건 (관찰하면 수정해야 할 신호)\n## 출처\n\n' + JSON.stringify(data), { phase: 'Report', label: 'report' })
 
 return { report, data, record }

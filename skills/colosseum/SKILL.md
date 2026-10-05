@@ -85,10 +85,10 @@ COLOSSEUM_JSON
 | factual, technical | `colosseum:debate` | `mode: "factual"` 또는 `"technical"` |
 | decision ("A를 할까 B를 할까") | `colosseum:debate` | `mode: "decision"` |
 | normative (가치 판단) | `colosseum:debate` | `mode: "normative"` |
-| forecast (미래 사건의 확률) | `colosseum:forecast` | `kind: "probability"`, `resolution_criteria`, `resolve_by`, `extremize`, `forecast_id` |
-| estimate (수치 추정) | `colosseum:forecast` | `kind: "estimate"`, `unit` |
-| diagnostic ("X는 왜 일어났나") | `colosseum:diagnose` | 없음 |
-| creative (아이디어, 이름 짓기) | `colosseum:ideate` | 선택: `criteria` |
+| forecast (미래 사건의 확률) | `colosseum:forecast` (실험) | `kind: "probability"`, `resolution_criteria`, `resolve_by`, `extremize`, `forecast_id` |
+| estimate (수치 추정) | `colosseum:forecast` (실험) | `kind: "estimate"`, `unit` |
+| diagnostic ("X는 왜 일어났나") | `colosseum:diagnose` (실험) | 없음 |
+| creative (아이디어, 이름 짓기) | `colosseum:ideate` (실험) | 선택: `criteria` |
 
    확률 예측은 해소 기준과 해소 시점이 명확해야 한다. 질문에서 정할 수 없으면 사용자에게 물어서 정한다. `extremize`는 `CTL forecast fit`의 `a` 값을 쓴다(기록이 부족하면 1.0). `forecast_id`는 `AS_OF`와 질문 요약으로 만든다.
 2. `python3`와 Bash가 있으면 아래 "실행 열기"대로 실행을 연다. 훅의 예산 강제와 출처 기록이 이때부터 작동한다.
