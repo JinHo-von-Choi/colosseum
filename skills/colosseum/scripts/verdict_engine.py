@@ -26,7 +26,7 @@ THETA = 0.5
 MAX_UNDEC = 16
 
 
-def build(doc):
+def build(doc, margin=MARGIN):
     ev = {e["id"]: e for e in doc["evidence"]}
     nodes = {c["id"]: c for c in doc["claims"] if c.get("status", "active") == "active"}
     tau = {n: G.base_score(c, ev) for n, c in nodes.items()}
@@ -40,7 +40,7 @@ def build(doc):
         unconditional = r["subtype"] == "undercut" and G.has_checked_evidence(nodes[a], ev)
         if r["subtype"] == "undercut" and not unconditional:
             demoted.append((a, b))
-        if unconditional or not (tau[b] > tau[a] + MARGIN):
+        if unconditional or not (tau[b] > tau[a] + margin):
             defeats.add((a, b))
     return nodes, tau, defeats, att, sup, sorted(demoted)
 
@@ -140,9 +140,9 @@ def rule(doc, a, b, nodes, st, pref):
     return "NEITHER_ESTABLISHED"
 
 
-def verdict(doc, theta=THETA):
+def verdict(doc, theta=THETA, margin=MARGIN):
     G.validate(doc)
-    nodes, tau, defeats, att, sup, demoted = build(doc)
+    nodes, tau, defeats, att, sup, demoted = build(doc, margin)
     lab = grounded(nodes, defeats)
     pref, stable = preferred_and_stable(nodes, defeats, lab)
     strength, converged = dfquad(nodes, tau, att, sup)

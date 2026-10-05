@@ -15,6 +15,8 @@
   verdict      deterministic verdicts from graph.json
   metrics      evidence-quality checklist from graph.json
   finish       close the run as completed
+  whatif       recompute verdicts with one evidence item excluded or one claim unproven
+  adr          decision record (Markdown ADR + JSON) from a colosseum:debate result
   forecast     forecast store: add (stdin JSON), resolve, list, score, fit, import, export
                (shared across sessions)
 
@@ -33,6 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import baseline as B  # noqa: E402
 import calibration as C  # noqa: E402
+import decision as D  # noqa: E402
 import graph as G  # noqa: E402
 import metrics as M  # noqa: E402
 import quote_match as Q  # noqa: E402
@@ -357,6 +360,29 @@ def cmd_metrics(a):
     return emit(out)
 
 
+def cmd_whatif(a):
+    doc = _input(a, "graph.json")
+    st = S.load(a.session, a.data) if a.session else None
+    theta = 0.7 if st and st.get("stakes") == "high" else V.THETA
+    return emit(D.whatif(doc, a.exclude_evidence, a.unprove_claim, theta))
+
+
+def cmd_adr(a):
+    result = _input(a, "result.json")
+    rec = D.record(result, a.status)
+    md = D.markdown(rec)
+    out_dir = a.out
+    if not out_dir and a.session:
+        out_dir = S.run_path(a.session, a.run, a.data) if a.run else S.run_dir(a.session, a.data)
+    files = None
+    if out_dir:
+        S.secure_dir(out_dir)
+        files = {"markdown": os.path.join(out_dir, "decision.md"), "json": os.path.join(out_dir, "decision.json")}
+        S.write_private(files["markdown"], md)
+        S.write_json(files["json"], rec)
+    return emit({"ok": True, "files": files, "status": rec["status"], "markdown": md if not files else None})
+
+
 def cmd_finish(a):
     with S.locked(a.session, a.data):
         st = _running(a)
@@ -450,7 +476,8 @@ def parser():
     sp.add_argument("--page-file")
     sp.set_defaults(fn=cmd_quote)
 
-    for name, fn in (("baseline", cmd_baseline), ("verdict", cmd_verdict), ("metrics", cmd_metrics)):
+    for name, fn in (("baseline", cmd_baseline), ("verdict", cmd_verdict), ("metrics", cmd_metrics),
+                     ("whatif", cmd_whatif), ("adr", cmd_adr)):
         sp = with_session(sub.add_parser(name), required=False)
         sp.add_argument("--file", help="input JSON file, or - for stdin (saved into the run directory)")
         sp.add_argument("--run", help="read the input from this run of the session instead of the current one")
@@ -458,6 +485,14 @@ def parser():
             sp.add_argument("--extremize", type=float, default=1.0)
         if name == "verdict":
             sp.add_argument("--theta", type=float)
+        if name == "whatif":
+            g = sp.add_mutually_exclusive_group(required=True)
+            g.add_argument("--exclude-evidence", help="evidence id to drop from every claim")
+            g.add_argument("--unprove-claim", help="claim id to strip of its evidence")
+        if name == "adr":
+            sp.add_argument("--status", default="proposed", choices=D.STATUSES,
+                            help="set by the person deciding; the default is proposed")
+            sp.add_argument("--out", help="directory for decision.md and decision.json (default: the run directory)")
         sp.set_defaults(fn=fn)
 
     with_session(sub.add_parser("finish")).set_defaults(fn=cmd_finish)
@@ -475,7 +510,7 @@ def parser():
 
 def main(argv):
     a = parser().parse_args(argv)
-    if a.cmd in ("baseline", "verdict", "metrics") and not (a.file or a.session):
+    if a.cmd in ("baseline", "verdict", "metrics", "whatif", "adr") and not (a.file or a.session):
         return emit({"error": "give --session or --file"}, 2)
     if a.cmd == "quote" and not a.stdin and not (a.page_file and (a.quote is not None or a.quote_file)):
         return emit({"error": "give --stdin, or --page-file with --quote or --quote-file"}, 2)
