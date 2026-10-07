@@ -5,7 +5,7 @@
   "ko": "재택근무를 병행한 직원의 퇴사율은 33% 낮아졌고 성과 평가에는 차이가 없었다. 65세 이상인 경우 용량을 절반으로 줄인다. 이 약은 성인에게 효과가 없다. 직원은 50명 이상이다."
  },
  "cases": [
-  {"page": "en", "quote": "The drug is effective in adults", "expect": "u", "defect": "negation removed", "reason_prefix": "negation"},
+  {"page": "en", "quote": "The drug is effective in adults", "expect": "u", "defect": "negation removed"},
   {"page": "en", "quote": "The drug is not effective in adults", "expect": "v", "control": true},
   {"page": "en", "quote": "Revenue fell +5.2% year on year", "expect": "u", "defect": "sign flipped"},
   {"page": "en", "quote": "Revenue fell 5.2% year on year", "expect": "u", "defect": "sign dropped"},

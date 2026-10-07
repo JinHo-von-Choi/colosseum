@@ -35,11 +35,10 @@ const LIB = (() => {
   const MARGIN = 0.15
   const THETA = 0.5
   const MAX_UNDEC = 16
-  const NEAR = 0.9
   const CLIP = [0.02, 0.98]
 
-  // ---- quote matching (quote_match.py, matcher quote-match/2) ----
-  const MATCHER_VERSION = 'quote-match/2'
+  // ---- quote matching (quote_match.py, matcher quote-match/3) ----
+  const MATCHER_VERSION = 'quote-match/3'
   const CHAR_MAP = {
     '‘': "'", '’': "'", '‚': "'", '‛': "'", '′': "'",
     '“': '"', '”': '"', '„': '"', '‟': '"', '″': '"',
@@ -51,13 +50,6 @@ const LIB = (() => {
   const KEEP_SYMBOLS = new Set('<>=≤≥≠≈$€£¥₩%‰')
   const COMPARE_SYMBOLS = new Set('<>=≤≥≠≈')
   const SENTENCE_END = new Set('!?\n。')
-  const NEGATIONS = new Set(['not', 'no', 'never', 'none', 'nor', 'neither', 'cannot', 'without', 'nobody', 'nothing', 'nowhere',
-    '안', '못', '미', '비', '불', '무'])
-  const NEGATION_PARTS = ['않', '없', '아니', '못하', '불가']
-  const COMPARATORS = new Set(['more', 'less', 'fewer', 'greater', 'over', 'under', 'above', 'below', 'least', 'most',
-    'than', 'exceed', 'exceeds', 'exceeded', 'up', 'down', 'rose', 'fell', 'increase', 'decrease',
-    'increased', 'decreased', 'higher', 'lower', '이상', '이하', '미만',
-    '초과', '이내', '넘게', '이상의', '이하의'])
   const QUALIFIERS = new Set(['if', 'unless', 'when', 'whenever', 'only', 'except', 'excluding', 'provided', 'assuming', 'until',
     '단', '다만', '만약', '경우', '경우에', '경우에는',
     '조건', '한해', '제외하고', '제외하면'])
@@ -122,12 +114,8 @@ const LIB = (() => {
     }
     return [toks, ends]
   }
-  const isNegation = (t) => NEGATIONS.has(t) || t.endsWith("n't") || NEGATION_PARTS.some((p) => t.includes(p))
-  const isComparator = (t) => COMPARATORS.has(t) || COMPARE_SYMBOLS.has(t)
   const isQualifier = (t) => QUALIFIERS.has(t) || (Array.from(t).length >= 2 && t.charCodeAt(0) >= 128 && QUALIFIER_SUFFIXES.some((s) => t.endsWith(s)))
-  const hasDigit = (t) => Array.from(t).some(isDigit)
   const cmpStr = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
-  const guarded = (tokens) => [...new Set(tokens.filter((t) => hasDigit(t) || isNegation(t) || isComparator(t)))].sort(cmpStr)
   function findRun(q, p) {
     for (let s = 0; s + q.length <= p.length; s++) {
       let k = 0
@@ -135,31 +123,6 @@ const LIB = (() => {
       if (k === q.length) return s
     }
     return -1
-  }
-  function lcs(a, b) {
-    let prev = new Array(b.length + 1).fill(0)
-    for (const x of a) {
-      const cur = [0]
-      for (let j = 0; j < b.length; j++) cur.push(x === b[j] ? prev[j] + 1 : Math.max(prev[j + 1], cur[j]))
-      prev = cur
-    }
-    return prev[b.length]
-  }
-  function bestWindow(q, p) {
-    if (!q.length || !p.length) return [0, 0, 0]
-    const qset = new Set(q), size = q.length + 3
-    let best = 0, bs = 0, be = 0
-    const last = Math.max(1, p.length - q.length + 1)
-    for (let start = 0; start < last; start++) {
-      const seg = p.slice(start, start + size)
-      if (q.length >= 3 && seg.filter((t) => qset.has(t)).length < NEAR * q.length) continue
-      const ratio = lcs(q, seg) / q.length
-      if (ratio > best) {
-        best = ratio; bs = start; be = start + seg.length
-        if (best === 1) break
-      }
-    }
-    return [best, bs, be]
   }
   function matchQuote(quote, page) {
     const [q] = tokenize(normalize(quote))
@@ -178,18 +141,7 @@ const LIB = (() => {
       if (dropped.length) return Object.assign(out, { status: 'n', kind: 'qualifier_omitted', reason: 'quote leaves out part of its sentence that carries a condition or scope: ' + dropped.join(', ') })
       return Object.assign(out, { status: 'v', reason: 'exact' })
     }
-    const [ratio, ws, we] = bestWindow(q, p)
-    const score = Math.round(ratio * 1000) / 1000
-    out.score = score
-    if (score < NEAR) return Object.assign(out, { status: 'u', reason: 'not found on the page' })
-    const qset = new Set(q)
-    let window = p.slice(ws, we)
-    while (window.length && !qset.has(window[0])) window = window.slice(1)
-    while (window.length && !qset.has(window[window.length - 1])) window = window.slice(0, -1)
-    const gq = guarded(q), gw = guarded(window)
-    if (JSON.stringify(gq.filter(hasDigit)) !== JSON.stringify(gw.filter(hasDigit))) return Object.assign(out, { status: 'u', reason: 'numbers or signs differ from the page' })
-    if (JSON.stringify(gq) !== JSON.stringify(gw)) return Object.assign(out, { status: 'u', reason: 'negation or comparison differs from the page' })
-    return Object.assign(out, { status: 'n', kind: 'near', span: [ws, we], reason: 'near match; review required' })
+    return Object.assign(out, { status: 'u', score: 0, reason: 'not found on the page' })
   }
 
   // ---- baseline (baseline.py) ----

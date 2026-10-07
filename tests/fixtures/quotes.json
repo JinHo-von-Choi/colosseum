@@ -4,7 +4,7 @@
   {"quote": "Resignations fell by 33% among workers who shifted from full-time office work to a hybrid schedule", "expect": "v"},
   {"quote": "resignations fell by 33 percent among workers who shifted from full-time office work to a hybrid schedule", "expect": "u"},
   {"quote": "Hybrid work had no effect on performance reviews or promotions", "expect": "v"},
-  {"quote": "Hybrid work had no effect on performance reviews or promotions over the next two years", "expect": "n"},
+  {"quote": "Hybrid work had no effect on performance reviews or promotions over the next two years", "expect": "u"},
   {"quote": "The experiment involved 1,612 graduate engineers", "expect": "v"},
   {"quote": "\"These results show that hybrid WFH is a win-win,\" the authors wrote.", "expect": "v"},
   {"quote": "these results show that hybrid wfh is a win win", "expect": "v"},
@@ -19,7 +19,7 @@
   {"quote": "Working from home is becoming increasingly popular.", "expect": "v"},
   {"quote": "Working from home is becoming more and more popular.", "expect": "u"},
   {"quote": "with the largest drops among women, non-managers and employees with long commutes", "expect": "v"},
-  {"quote": "with the largest drops among women non managers and staff with long commutes", "expect": "n"},
+  {"quote": "with the largest drops among women non managers and staff with long commutes", "expect": "u"},
   {"quote": "a large Chinese technology company, Trip.com", "expect": "v"}
  ]
 }
