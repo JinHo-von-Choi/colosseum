@@ -7,7 +7,7 @@
 | 이름 | 현재 값 | 바뀌면 |
 |------|---------|--------|
 | 그래프 형식 | `colosseum.arggraph/v2` | `schema`가 없는 그래프는 v1로 읽는다. v1과 v2는 같은 필드를 쓰며, v2는 아래 선택 필드를 더한다 |
-| 인용 대조기 | `quote-match/2` | 인용 대조 결과(v, n, u)를 다시 계산한다 |
+| 인용 대조기 | `quote-match/3` | 인용 대조 결과(v, n, u)를 다시 계산한다 |
 | 근거 정책 | `evidence-policy/2` | 점수와 근거 자격이 바뀌므로 판정을 다시 계산한다. `verdict` 출력의 `policy`에 기록된다 |
 | 실행 상태 | `colosseum.state/v2` | 다른 버전의 체크포인트는 `resume`이 거부한다. `restart`로 새 실행을 연다 |
 | 예측 저장소 | sqlite 표 하나 | `forecast import`가 이전 JSONL 기록을 넣는다 |

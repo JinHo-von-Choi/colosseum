@@ -82,7 +82,7 @@ Tested on Linux. On systems without `fcntl` the scripts refuse to start a run.
 - Claude Code is the tested host. Other hosts run the skill without workflows and hooks, so budgets and blind-draft isolation depend on the host following the skill's instructions.
 
 - Quotes are checked against the text returned by the page fetch tool, which is itself produced by a model. A quote marked verified is strong evidence, not proof.
-- External agents argue from the fact base and the quotes given to them; they do not search the web during the debate. Claude participants do.
+- External agents cannot search the web themselves; they choose search queries and receive the raw results each turn.
 - Each run is capped at 3 rounds, 25 searches and 15 page fetches.
 - Forecast and estimate questions are experimental. Idea generation is out of scope.
 - Probabilities are not calibrated.

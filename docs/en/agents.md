@@ -31,17 +31,19 @@ An agent counts as usable only if it is installed and answers the probe. Probe r
 ## How the roster is built
 
 ```bash
-relay.py roster --size 3 --probe --prefer codex,kimi
+relay.py roster --size 3 --probe --host-family claude --prefer codex,kimi
 ```
 
 1. Agents you name come first, in your order (`--prefer`). With `--only`, no other external agent is used.
 2. Remaining seats go to usable agents by priority, one per model family.
-3. At most two seats go to external agents, so one participant on the host's own model remains to search the web during the debate. `--max-cli` changes this.
-4. The Claude Code CLI joins only when you name it, since in Claude Code it is the same family as the built-in participants.
+3. At most two seats go to external agents, so one participant runs on the host's own model. `--max-cli` changes this.
+4. An agent of the host's own family (`--host-family`, `claude` by default; use `google` in a Gemini-based host) joins only when you name it.
 5. An unused agent from a family not in the roster becomes the juror.
 6. Labels A, B, C are assigned in random order.
 
 The output lists the providers that will receive prompts (`transmission`) and warnings in `notes`.
+
+External agents cannot search the web themselves. In each turn an external agent first names up to two search queries; a host participant runs them and the raw results go back to the agent with the prompt. Its quotes are checked like everyone else's.
 
 ## Your agents file
 

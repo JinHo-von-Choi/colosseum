@@ -51,7 +51,7 @@ These read their input from `--file PATH`, from stdin with `--file -`, or from t
 |---------|---------|
 | `list` | Every agent in the registry and whether it is installed |
 | `detect [--probe] [--refresh] [--brief]` | Installed agents in preference order; `--probe` tests that each one answers |
-| `roster [--size 3] [--prefer a,b] [--only a,b] [--max-cli N] [--probe] [--seed N]` | Roster for a run |
+| `roster [--size 3] [--prefer a,b] [--only a,b] [--max-cli N] [--host-family F] [--probe] [--seed N]` | Roster for a run |
 | `mktemp` | A private directory for a prompt file |
 | `run --cli ID --prompt-file PATH [--timeout 180] [--max-output 200000] [--cleanup]` | Send one prompt to one agent |
 

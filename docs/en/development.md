@@ -22,6 +22,15 @@ python3 tools/sync_workflow_blocks.py
 
 A test fails if the copies differ.
 
+## When to add defensive code
+
+Add a check, fallback or guard only when one of these holds:
+
+- a test reproduces the failure it prevents, or
+- it sits on a named trust boundary: user input, external agent output, web content, the file system, the shell.
+
+Validate once at that boundary and trust the data inside. Do not guard states that an earlier step already rules out. Experimental features get the smallest version that works. Heuristic word lists grow only with real failing examples. Tests check what users see, not internal structure.
+
 ## Tests
 
 ```bash

@@ -202,6 +202,24 @@ class ClaimIds(unittest.TestCase):
                 self.assertEqual(by_id[r["from"]]["issue"], by_id[r["to"]]["issue"], r)
             self.assertEqual(V.verdict(res["graph"])["status"], res["verdict"]["status"])
 
+    def test_external_agents_get_their_own_search_results(self):
+        args = dict(self.ARGS, roster=[{"label": "A", "family": "claude"}, {"label": "B", "family": "openai", "cli": "codex"},
+                                       {"label": "C", "family": "claude"}])
+        rules = [{"label": "^B:draft:queries$", "response": {"queries": ["drug trial children"]}},
+                 {"label": "^B:draft:search$", "response": {"results": [{"title": "Trial", "url": "https://example.net/trial",
+                                                                         "snippet": "Trials found the drug effective in children under 12."}]}},
+                 {"label": ":queries$", "response": {"queries": []}}] + debate_rules(1)
+        out = run_workflow("debate", args, rules)
+        self.assertNotIn("error", out, out.get("error"))
+        labels = [c["label"] for c in out["calls"]]
+        self.assertLess(labels.index("B:draft:queries"), labels.index("B:draft:search"))
+        self.assertLess(labels.index("B:draft:search"), labels.index("B:draft"))
+        draft = next(c["prompt"] for c in out["calls"] if c["label"] == "B:draft")
+        self.assertIn("[검색 결과]", draft)
+        self.assertIn("https://example.net/trial", draft)
+        self.assertNotIn("B:prosecutor:search", labels, "no queries means no search call")
+        self.assertNotIn("A:draft:queries", labels, "host participants search by themselves")
+
     def test_issue_order_changes_ids_but_not_verdicts(self):
         a = self.run_debate(2)
         rules = debate_rules(2)

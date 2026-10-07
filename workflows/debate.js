@@ -471,15 +471,26 @@ const S_CLAIMS = { type: 'array', items: S_CLAIM, maxItems: 4 }
 const S_FACTS = { type: 'object', properties: { facts: { type: 'array', items: { type: 'object', properties: { claim: { type: 'string' }, url: { type: 'string' }, quote: { type: 'string' }, publisher: { type: 'string' } }, required: ['claim', 'url', 'quote'] } } }, required: ['facts'] }
 const S_PREMORTEM = { type: 'object', properties: { causes: { type: 'array', items: { type: 'object', properties: { cause: { type: 'string' }, check: { type: 'string' } }, required: ['cause', 'check'] }, maxItems: 3 }, underconfidence: { type: 'string' }, claims: S_CLAIMS }, required: ['causes', 'underconfidence', 'claims'] }
 
-// One participant turn. Claude participants run as colosseum:participant; CLI participants
-// run through colosseum:cli-proxy, which passes the prompt to the CLI and returns its JSON.
+// One participant turn. Host participants run as colosseum:participant and search the web
+// themselves. An external agent cannot, so it first names up to two search queries, a
+// participant runs them, and the raw results go back to the agent with the prompt.
+const S_QUERIES = { type: 'object', properties: { queries: { type: 'array', items: { type: 'string' }, maxItems: 2 } }, required: ['queries'] }
+const S_RESULTS = { type: 'object', properties: { results: { type: 'array', maxItems: 6, items: { type: 'object', properties: { title: { type: 'string' }, url: { type: 'string' }, snippet: { type: 'string' } }, required: ['url', 'snippet'] } } }, required: ['results'] }
+
 async function turn(p, role, body, schema, phaseName) {
   const prompt = PRIME + '\n\n당신의 익명 라벨: ' + p.label + ' | 역할: ' + role + '\n\n' + body
-  if (p.cli) {
-    const fields = Object.keys(schema.properties).join(', ')
-    return agent('CLI: ' + p.cli + (A.relay ? '\nRELAY: ' + A.relay : '') + '\n\n아래 프롬프트 끝에 "JSON 객체 하나로만 답하라. 필드: ' + fields + '"를 덧붙여 이 CLI에 전달하고, CLI가 돌려준 JSON을 스키마에 맞춰 반환하라. CLI는 검색할 수 없으므로 참고 자료 안의 URL과 인용만 쓸 수 있다.\n\n----- PROMPT -----\n' + prompt, { agentType: 'colosseum:cli-proxy', schema, phase: phaseName, label: p.label + ':' + role })
+  const label = p.label + ':' + role
+  if (!p.cli) return agent(prompt, { agentType: 'colosseum:participant', schema, phase: phaseName, label })
+  const head = 'CLI: ' + p.cli + (A.relay ? '\nRELAY: ' + A.relay : '') + '\n\n'
+  const q = await agent(head + '아래 프롬프트 끝에 "이 과제에 답하기 전에 웹에서 확인할 검색어를 최대 2개 정하라. JSON {\"queries\": [...]} 하나로만 답하라."를 덧붙여 이 CLI에 전달하고, CLI가 돌려준 검색어를 반환하라.\n\n----- PROMPT -----\n' + prompt, { agentType: 'colosseum:cli-proxy', schema: S_QUERIES, phase: phaseName, label: label + ':queries' })
+  const queries = ((q && q.queries) || []).filter(Boolean).slice(0, 2)
+  let found = ''
+  if (queries.length) {
+    const r = await agent('WebSearch로 다음 검색어를 각각 검색하라: ' + queries.map((x) => '"' + x + '"').join(', ') + '\n검색어마다 상위 결과 3개의 제목, URL, 검색 엔진 스니펫을 고치지 말고 그대로 반환하라.', { agentType: 'colosseum:participant', schema: S_RESULTS, phase: phaseName, label: label + ':search', effort: 'low' })
+    found = ((r && r.results) || []).map((x) => '- ' + (x.title || '') + ' | ' + x.url + ' | "' + x.snippet + '"').join('\n')
   }
-  return agent(prompt, { agentType: 'colosseum:participant', schema, phase: phaseName, label: p.label + ':' + role })
+  const fields = Object.keys(schema.properties).join(', ')
+  return agent(head + '아래 프롬프트 끝에 "JSON 객체 하나로만 답하라. 필드: ' + fields + '"를 덧붙여 이 CLI에 전달하고, CLI가 돌려준 JSON을 스키마에 맞춰 반환하라. CLI는 참고 자료와 검색 결과 안의 URL과 인용만 쓸 수 있다.\n\n----- PROMPT -----\n' + prompt + (found ? '\n\n[검색 결과] 당신이 정한 검색어의 결과다. 인용은 이 스니펫이나 참고 자료에 있는 문장만 쓴다.\n' + found : ''), { agentType: 'colosseum:cli-proxy', schema, phase: phaseName, label })
 }
 
 // ---- user materials ----

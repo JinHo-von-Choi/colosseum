@@ -51,7 +51,7 @@
 |------|------|
 | `list` | 등록부의 모든 에이전트와 설치 여부 |
 | `detect [--probe] [--refresh] [--brief]` | 설치된 에이전트를 선호 순서대로. `--probe`는 실제로 답하는지 확인한다 |
-| `roster [--size 3] [--prefer a,b] [--only a,b] [--max-cli N] [--probe] [--seed N]` | 실행에 쓸 명단 |
+| `roster [--size 3] [--prefer a,b] [--only a,b] [--max-cli N] [--host-family F] [--probe] [--seed N]` | 실행에 쓸 명단 |
 | `mktemp` | 프롬프트 파일을 둘 전용 디렉터리 |
 | `run --cli ID --prompt-file PATH [--timeout 180] [--max-output 200000] [--cleanup]` | 에이전트 하나에 프롬프트 하나를 보낸다 |
 

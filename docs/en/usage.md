@@ -73,8 +73,8 @@ Quote check results:
 |------|---------|--------------------|
 | `v` | The quote appears word for word on the page, and no condition in its sentence was cut off | yes |
 | `snippet` | The page could not be fetched; the quote appears word for word in a search snippet | yes, with half weight |
-| `n` | Needs review: a near match, or a verbatim quote that drops an "if", "only", "except" or similar from its sentence | no |
-| `u` | Not found. Changed numbers, signs, negations or comparisons ("more than" to "less than") always give `u` | no |
+| `n` | Needs review: the quote is verbatim but drops an "if", "only", "except" or similar from its sentence | no |
+| `u` | Not found word for word. One changed word is enough, including numbers, signs, negations and comparisons | no |
 
 A quote also needs a support judgment of `full` or `partial` for the claim it backs. The same quote is judged separately for every claim that cites it.
 

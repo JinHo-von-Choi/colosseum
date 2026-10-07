@@ -87,6 +87,8 @@ class DecisionRecord(unittest.TestCase):
         self.assertLessEqual(len(rec["decisive_evidence"]), 3)
         for d in rec["decisive_evidence"]:
             self.assertTrue(all(e["eligible"] for e in d["evidence"]))
+        quotes = [(e["url"], e["quote"]) for d in rec["decisive_evidence"] for e in d["evidence"]]
+        self.assertEqual(len(quotes), len(set(quotes)), "one source must not appear as several decisive items")
         self.assertIn("P_final is UNCALIBRATED", rec["limits"])
         self.assertTrue(any("homogeneous" in x for x in rec["limits"]))
         md = D.markdown(rec)
