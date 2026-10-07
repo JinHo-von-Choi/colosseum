@@ -34,7 +34,7 @@
 | `quote` | 참가자가 제출한 인용 원문 |
 | `quote_status` | `v`, `snippet`, `n`, `u` |
 | `match.matcher` | 대조기 버전 |
-| `match.reason` | 판정 사유. 예: `exact`, `negation or comparison differs from the page`, `quote leaves out part of its sentence that carries a condition or scope: if` |
+| `match.reason` | 판정 사유. 예: `exact`, `not found on the page`, `quote leaves out part of its sentence that carries a condition or scope: if` |
 | `match.span` | 원문 토큰 기준 일치 위치 `[시작, 끝)` |
 
 `n`은 사람의 검토가 필요하다는 뜻이다. 모델이 의미가 같다고 판단해도 등급을 올리지 않는다.
