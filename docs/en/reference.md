@@ -39,10 +39,10 @@ These read their input from `--file PATH`, from stdin with `--file -`, or from t
 
 | Command | Purpose |
 |---------|---------|
-| `forecast add [--file PATH] [--event-id K]` | Save a forecast record (JSON on stdin by default). Repeating the same record is a no-op |
+| `forecast add [--file PATH]` | Save a forecast record (JSON on stdin by default). Repeating the same record is a no-op |
 | `forecast resolve --id ID --outcome 0\|1` | Record the outcome. Repeating it is a no-op; a different outcome is an error |
-| `forecast list`, `forecast score`, `forecast fit`, `forecast status` | List, score (Brier, log loss, bins), fit the pooling factor, show the store |
-| `forecast import [--file PATH]` | Import a `forecasts.jsonl` file once; the original is backed up |
+| `forecast list`, `forecast score`, `forecast fit` | List, score (Brier, log loss, bins), fit the pooling factor |
+| `forecast import [--file PATH]` | Add the records of a `forecasts.jsonl` file; known records are skipped |
 | `forecast export [--file PATH]` | Write all records as JSON lines |
 
 ## relay.py

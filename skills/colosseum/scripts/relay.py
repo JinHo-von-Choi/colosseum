@@ -25,7 +25,6 @@ a space so it cannot be read as an option. Every agent runs in an empty private 
 a coding agent has no repository to edit. On timeout or cancellation the agent's whole
 process group is killed. Prints one JSON object; exit code 0 on success, 2 otherwise.
 """
-import hashlib
 import json
 import os
 import random
@@ -142,7 +141,7 @@ def build_argv(aid, spec, prompt_text=None):
 
 def describe(aid, spec):
     return {"id": aid, "name": spec.get("name", aid), "provider": spec.get("provider"), "family": spec.get("family", aid),
-            "family_uncertain": bool(spec.get("family_uncertain")), "verified": bool(spec.get("verified")),
+            "family_uncertain": bool(spec.get("family_uncertain")),
             "prompt": spec["prompt"], "disabled": bool(spec.get("disabled")),
             "installed": bool(installed(spec)), "priority": spec.get("priority", 50)}
 
@@ -242,11 +241,6 @@ def run(cli, prompt_file, timeout=DEFAULT_TIMEOUT, max_output=DEFAULT_MAX_OUTPUT
 
 # ---- detection and probing ----
 
-def _probe_key(aid, spec):
-    raw = json.dumps([installed(spec), spec["argv"], spec.get("vars", {}), spec["prompt"]], sort_keys=True)
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
-
-
 def probe_path(data=None):
     return os.path.join(S.data_root(data), "agents-probe.json")
 
@@ -272,11 +266,8 @@ def detect(data=None, do_probe=False, refresh=False, registry=None):
     cache = {}
     cpath = probe_path(data)
     if do_probe and not refresh and os.path.exists(cpath):
-        try:
-            with open(cpath, encoding="utf-8") as f:
-                cache = json.load(f)
-        except ValueError:
-            cache = {}
+        with open(cpath, encoding="utf-8") as f:
+            cache = json.load(f)
     now = time.time()
     rows = []
     for aid, spec in reg["agents"].items():
@@ -284,13 +275,12 @@ def detect(data=None, do_probe=False, refresh=False, registry=None):
         if not row["installed"] or row["disabled"]:
             continue
         if do_probe:
-            key = _probe_key(aid, spec)
             hit = cache.get(aid)
-            if hit and hit.get("key") == key and now - hit.get("at", 0) < PROBE_TTL:
+            if hit and now - hit["at"] < PROBE_TTL:
                 result = hit["result"]
             else:
                 result = probe(aid, spec, data=data, registry=reg)
-                cache[aid] = {"key": key, "at": now, "result": result}
+                cache[aid] = {"at": now, "result": result}
             row["usable"] = result["usable"]
             row["probe"] = result
         rows.append(row)
@@ -350,8 +340,6 @@ def roster(detected, size=3, prefer=None, only=None, max_cli=None, seed=None):
     for r in chosen + ([juror] if juror else []):
         if r["family_uncertain"]:
             notes.append("%s: the model depends on its own configuration; family %r is a guess. Set \"family\" in the user agents.json" % (r["id"], r["family"]))
-        if not r["verified"]:
-            notes.append("%s: invocation not checked against its documentation; run `relay.py detect --probe` first" % r["id"])
     if unavailable:
         notes.append("not available: %s" % ", ".join(unavailable))
     return {

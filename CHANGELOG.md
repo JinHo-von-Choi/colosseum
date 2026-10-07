@@ -20,7 +20,7 @@ First stable release. Version numbers restart here; the versions below were publ
 ### 3.3.0-beta.1 (2026-10-05)
 
 #### Added
-- Uses the AI agent CLIs installed on the machine as participants: Codex, Gemini CLI, Kimi Code, MiniMax Code, Qwen Code, OpenCode, Hermes Agent, OpenClaw, Cursor CLI, Copilot CLI, Crush, Amp, Goose, llm, aichat, Ollama and the Claude Code CLI.
+- Uses the AI agent CLIs installed on the machine as participants: Codex, Gemini CLI, Kimi Code, MiniMax Code, OpenCode, Hermes Agent, OpenClaw, llm, Ollama and the Claude Code CLI; others can be added in a settings file.
 - `relay.py detect --probe` lists installed agents and checks that each one answers.
 - `relay.py roster` puts agents named by the user first, then fills seats with one agent per model family, keeps one Claude participant for web search, and picks a juror from another family.
 - An `agents.json` file in the data directory adds agents, changes their settings, disables them or sets a preference order. `COLOSSEUM_AGENTS` sets the order from the environment.

@@ -10,7 +10,7 @@
 | 인용 대조기 | `quote-match/2` | 인용 대조 결과(v, n, u)를 다시 계산한다 |
 | 근거 정책 | `evidence-policy/2` | 점수와 근거 자격이 바뀌므로 판정을 다시 계산한다. `verdict` 출력의 `policy`에 기록된다 |
 | 실행 상태 | `colosseum.state/v2` | 다른 버전의 체크포인트는 `resume`이 거부한다. `restart`로 새 실행을 연다 |
-| 예측 저장소 | `colosseum.forecasts/v1` (sqlite) | `forecast import`가 JSONL을 한 번 가져온다 |
+| 예측 저장소 | sqlite 표 하나 | `forecast import`가 이전 JSONL 기록을 넣는다 |
 | 결정 기록 | `colosseum.decision/v1` | `adr` 출력 |
 
 ## 2. 다섯 가지 기록
@@ -54,7 +54,6 @@
 | `claim_id` | 판정 대상 주장 |
 | `support` | `full`, `partial`, `none`, `unknown` |
 | `support_reason` | 한 문장 이유 |
-| `assessment_key` | claim ID, 주장 텍스트 해시, 인용 키, 문맥 해시, 정책 버전을 이은 키. 이 중 하나라도 바뀌면 새로 판정한다 |
 
 한 evidence 레코드는 인용 하나를 주장 하나에 묶는다. 같은 인용을 두 주장이 쓰면 레코드도 둘이다. 원문 획득은 재사용하지만 지지 판정은 주장마다 따로 한다.
 

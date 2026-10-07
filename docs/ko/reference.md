@@ -39,10 +39,10 @@
 
 | 명령 | 용도 |
 |------|------|
-| `forecast add [--file PATH] [--event-id K]` | 예측 기록 저장(기본은 표준입력 JSON). 같은 기록을 다시 넣으면 아무 일도 없다 |
+| `forecast add [--file PATH]` | 예측 기록 저장(기본은 표준입력 JSON). 같은 기록을 다시 넣으면 아무 일도 없다 |
 | `forecast resolve --id ID --outcome 0\|1` | 결과 기록. 같은 결과를 다시 넣으면 아무 일도 없고, 다른 결과면 오류다 |
-| `forecast list`, `forecast score`, `forecast fit`, `forecast status` | 목록, 채점(Brier, 로그 손실, 구간), 풀링 계수 맞추기, 저장소 상태 |
-| `forecast import [--file PATH]` | `forecasts.jsonl`을 한 번 가져온다. 원본은 백업한다 |
+| `forecast list`, `forecast score`, `forecast fit` | 목록, 채점(Brier, 로그 손실, 구간), 풀링 계수 맞추기 |
+| `forecast import [--file PATH]` | `forecasts.jsonl`의 기록을 넣는다. 이미 있는 기록은 건너뛴다 |
 | `forecast export [--file PATH]` | 모든 기록을 JSON 줄로 내보낸다 |
 
 ## relay.py

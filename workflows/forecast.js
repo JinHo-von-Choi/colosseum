@@ -563,16 +563,12 @@ async function readMaterials(question) {
 }
 
 // ---- evidence: page acquisition, quote checks and support assessments ----
-// One evidence record binds one quote to one claim. Three caches keep their own keys:
-//   acquisitions : normalized URL + quote -> page passage or snippet, source fields (fetched once)
-//   quote checks : content hash + quote + matcher version (pure, recomputed from the cached text)
-//   assessments  : claim id + claim text hash + quote key + context hash + policy version -> support
-// A new claim citing an already fetched quote reuses the acquisition but gets its own
-// support assessment, so a judgment made for one claim never leaks to another.
+// One evidence record binds one quote to one claim. A page is fetched once per URL and
+// quote; a new claim citing it reuses the fetch but gets its own support judgment, so a
+// judgment made for one claim never leaks to another.
 const evidence = []
 const evidenceByKey = {}
 const acquisitions = {}
-const assessments = {}
 const failedHosts = new Set()
 let fetchesUsed = 0
 let degraded = false
@@ -657,15 +653,10 @@ function acquire(url, quote, claimText, phaseName) {
   return acquisitions[key]
 }
 
-async function assess(aKey, acq, claimHash, quote, claimText, phaseName) {
-  if (!assessments[aKey]) {
-    assessments[aKey] = (async () => {
-      if (acq.assessed && acq.assessed.claimHash === claimHash) return { support: acq.assessed.support, support_reason: acq.assessed.support_reason }
-      const r = await agent(SUPPORT_RUBRIC + '\n\n주장: ' + claimText + '\n인용: ' + quote + '\n인용의 문맥(원문): ' + acq.text, { schema: S_SUPPORT, phase: phaseName, label: 'support:' + textHash(aKey).slice(0, 6), effort: 'low' })
-      return r ? { support: r.support, support_reason: r.support_reason || '' } : { support: 'unknown', support_reason: 'no assessment returned' }
-    })()
-  }
-  return assessments[aKey]
+async function assess(acq, claimHash, quote, claimText, phaseName) {
+  if (acq.assessed && acq.assessed.claimHash === claimHash) return { support: acq.assessed.support, support_reason: acq.assessed.support_reason }
+  const r = await agent(SUPPORT_RUBRIC + '\n\n주장: ' + claimText + '\n인용: ' + quote + '\n인용의 문맥(원문): ' + acq.text, { schema: S_SUPPORT, phase: phaseName, label: 'support:' + claimHash.slice(0, 6), effort: 'low' })
+  return r ? { support: r.support, support_reason: r.support_reason || '' } : { support: 'unknown', support_reason: 'no assessment returned' }
 }
 
 // claimId is the graph claim id when the caller has one; the claim text hash is always
@@ -689,8 +680,7 @@ async function checkEvidence(url, quote, claimText, phaseName, claimId) {
   if (acq.acquisition === 'material') e.material = String(url).slice(9)
   e.quote_status = acq.acquisition === 'snippet' ? (m.status === 'v' ? 'snippet' : m.status === 'n' ? 'n' : 'u') : m.status
   if (e.quote_status === 'u') return e
-  e.assessment_key = [claimId || '', claimHash, e.quote_key, e.match.content_hash, LIB.POLICY_VERSION].join('|')
-  const a = await assess(e.assessment_key, acq, claimHash, quote, claimText, phaseName)
+  const a = await assess(acq, claimHash, quote, claimText, phaseName)
   e.support = a.support
   e.support_reason = a.support_reason
   return e

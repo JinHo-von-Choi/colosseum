@@ -159,7 +159,7 @@ class AgentRelay(unittest.TestCase):
 
 
 def row(aid, family, priority=10, **kw):
-    r = {"id": aid, "name": aid, "provider": aid, "family": family, "family_uncertain": False, "verified": True,
+    r = {"id": aid, "name": aid, "provider": aid, "family": family, "family_uncertain": False,
          "prompt": "stdin", "disabled": False, "installed": True, "priority": priority}
     r.update(kw)
     return r

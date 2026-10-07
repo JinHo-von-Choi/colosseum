@@ -10,21 +10,14 @@ Participants from different model families make different mistakes, so Colosseum
 | `gemini` | Gemini CLI | `gemini`, prompt on stdin |
 | `kimi` | Kimi Code CLI | `kimi -p <prompt>` |
 | `mcode` | MiniMax Code | `mcode exec <prompt>` |
-| `qwen` | Qwen Code | `qwen`, prompt on stdin |
 | `opencode` | OpenCode | `opencode run <prompt>` |
 | `hermes` | Hermes Agent | `hermes -z <prompt>` |
 | `openclaw` | OpenClaw | `openclaw agent --agent main --message <prompt>`; the gateway must be running |
-| `cursor-agent` | Cursor CLI | `cursor-agent -p --output-format text <prompt>` |
-| `copilot` | GitHub Copilot CLI | `copilot -p <prompt>` |
-| `crush` | Crush | `crush run <prompt>` |
-| `amp` | Amp | `amp -x <prompt>` |
-| `goose` | Goose | `goose run --no-session -i -`, prompt on stdin |
 | `llm` | llm | `llm`, prompt on stdin |
-| `aichat` | aichat | `aichat`, prompt on stdin |
 | `ollama` | Ollama | `ollama run <model>`, prompt on stdin; set the model in your agents file |
 | `claude` | Claude Code CLI | `claude -p` with write tools disallowed |
 
-The commands for `cursor-agent`, `copilot`, `crush`, `amp`, `goose`, `qwen` and `aichat` are marked unverified in the registry. Run a probe (below) before relying on them.
+Other CLIs, such as Qwen Code, Cursor CLI, Copilot CLI, Crush, Amp, Goose or aichat, can be added in your agents file (see below). Check them with a probe before use.
 
 ## Checking what is available
 

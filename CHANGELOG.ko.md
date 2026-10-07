@@ -20,7 +20,7 @@
 ### 3.3.0-beta.1 (2026-10-05)
 
 #### 추가
-- 컴퓨터에 설치된 AI 에이전트 CLI를 참가자로 쓴다: Codex, Gemini CLI, Kimi Code, MiniMax Code, Qwen Code, OpenCode, Hermes Agent, OpenClaw, Cursor CLI, Copilot CLI, Crush, Amp, Goose, llm, aichat, Ollama, Claude Code CLI
+- 컴퓨터에 설치된 AI 에이전트 CLI를 참가자로 쓴다: Codex, Gemini CLI, Kimi Code, MiniMax Code, OpenCode, Hermes Agent, OpenClaw, llm, Ollama, Claude Code CLI. 다른 CLI는 설정 파일로 추가한다
 - `relay.py detect --probe`: 설치된 에이전트를 찾고 실제로 답하는지 확인한다.
 - `relay.py roster`: 사용자가 지정한 에이전트를 먼저 넣고, 모델 계열마다 하나씩 채우며, 웹 검색용 Claude 참가자 한 자리를 남기고, 다른 계열에서 배심원을 고른다.
 - 데이터 디렉터리의 `agents.json`으로 에이전트를 추가하거나, 설정을 바꾸거나, 끄거나, 선호 순서를 정한다. `COLOSSEUM_AGENTS` 환경변수로도 순서를 정할 수 있다.

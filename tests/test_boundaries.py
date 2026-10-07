@@ -102,7 +102,7 @@ class Relay(unittest.TestCase):
         code, out = self.relay("run", "--cli", "bash", "--prompt-file", p)
         self.assertEqual(code, 2)
         self.assertIn("unknown agent", out["error"])
-        code, out = self.relay("run", "--cli", "aichat", "--prompt-file", p)
+        code, out = self.relay("run", "--cli", "mcode", "--prompt-file", p)
         self.assertIn("not installed", out["error"])
 
     def test_prompt_must_come_from_a_relay_directory(self):

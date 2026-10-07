@@ -10,21 +10,14 @@
 | `gemini` | Gemini CLI | `gemini`, 프롬프트는 표준입력 |
 | `kimi` | Kimi Code CLI | `kimi -p <프롬프트>` |
 | `mcode` | MiniMax Code | `mcode exec <프롬프트>` |
-| `qwen` | Qwen Code | `qwen`, 프롬프트는 표준입력 |
 | `opencode` | OpenCode | `opencode run <프롬프트>` |
 | `hermes` | Hermes Agent | `hermes -z <프롬프트>` |
 | `openclaw` | OpenClaw | `openclaw agent --agent main --message <프롬프트>`. 게이트웨이가 켜져 있어야 한다 |
-| `cursor-agent` | Cursor CLI | `cursor-agent -p --output-format text <프롬프트>` |
-| `copilot` | GitHub Copilot CLI | `copilot -p <프롬프트>` |
-| `crush` | Crush | `crush run <프롬프트>` |
-| `amp` | Amp | `amp -x <프롬프트>` |
-| `goose` | Goose | `goose run --no-session -i -`, 프롬프트는 표준입력 |
 | `llm` | llm | `llm`, 프롬프트는 표준입력 |
-| `aichat` | aichat | `aichat`, 프롬프트는 표준입력 |
 | `ollama` | Ollama | `ollama run <모델>`, 프롬프트는 표준입력. 모델 이름은 에이전트 설정 파일에 적는다 |
 | `claude` | Claude Code CLI | `claude -p`, 쓰기 도구 차단 |
 
-`cursor-agent`, `copilot`, `crush`, `amp`, `goose`, `qwen`, `aichat`은 등록부에 미검증으로 표시되어 있다. 쓰기 전에 아래 확인(probe)을 돌린다.
+Qwen Code, Cursor CLI, Copilot CLI, Crush, Amp, Goose, aichat 같은 다른 CLI는 아래 에이전트 설정 파일로 추가한다. 쓰기 전에 확인(probe)을 돌린다.
 
 ## 사용 가능한 에이전트 확인
 
