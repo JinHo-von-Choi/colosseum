@@ -109,8 +109,7 @@ COLOSSEUM_JSON
 | normative (가치 판단) | `colosseum:debate` | `mode: "normative"` |
 | forecast (미래 사건의 확률) | `colosseum:forecast` (실험) | `kind: "probability"`, `resolution_criteria`, `resolve_by`, `extremize`, `forecast_id` |
 | estimate (수치 추정) | `colosseum:forecast` (실험) | `kind: "estimate"`, `unit` |
-| diagnostic ("X는 왜 일어났나") | `colosseum:diagnose` (실험) | 없음 |
-| creative (아이디어, 이름 짓기) | `colosseum:ideate` (실험) | 선택: `criteria` |
+| diagnostic ("X는 왜 일어났나") | `colosseum:debate` | `mode: "factual"`. 경쟁하는 원인을 주장으로 세워 토론한다 |
 
    확률 예측은 해소 기준과 해소 시점이 명확해야 한다. 질문에서 정할 수 없으면 사용자에게 물어서 정한다. `extremize`는 `CTL forecast fit`의 `a` 값을 쓴다(기록이 부족하면 1.0). `forecast_id`는 `AS_OF`와 질문 요약으로 만든다.
 2. `python3`와 Bash가 있으면 아래 "실행 열기"대로 실행을 연다. 훅의 예산 강제와 출처 기록이 이때부터 작동한다.
@@ -133,7 +132,7 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/relay.py" --data "${CLAUDE_PLUGIN_DATA}" ro
    - 사용자가 "이 출처를 빼면?", "이 주장이 입증되지 않았다면?"을 물으면 `CTL whatif --session ... --exclude-evidence <E번호>` 또는 `--unprove-claim <주장 ID>`로 모델 호출 없이 다시 계산해, 바뀐 판정과 그대로인 판정, 변화가 전파된 관계를 보여 준다. 한 번에 하나만 바꾼다. 이 결과는 고정된 그래프 위의 의존성 확인이지 현실에 대한 예측이 아니다.
    - forecast(확률): 결과의 `record`를 `CTL forecast add`에 heredoc으로 넘겨 예측 기록에 남긴다. 해소 시점이 지나면 `CTL forecast resolve --id <id> --outcome 0|1`로 결과를 기록하고, `CTL forecast score`로 Brier 점수와 보정 구간을 본다.
    - 모든 워크플로: `CTL finish --session ...`로 실행을 닫는다. 워크플로가 실패하면 `CTL close --session ... --status failed --reason "<사유>"`, 사용자가 중단하면 `--status cancelled`로 닫는다.
-8. 워크플로가 실패하거나 비활성화되어 있으면 스크립트 모드로 처음부터 진행하고, 그 사실을 결과 머리에 적는다. 예측, 진단, 창작 질문도 스크립트 모드에서는 [references/modes.md](references/modes.md)의 절차를 손으로 따른다.
+8. 워크플로가 실패하거나 비활성화되어 있으면 스크립트 모드로 처음부터 진행하고, 그 사실을 결과 머리에 적는다. 예측 질문도 스크립트 모드에서는 [references/modes.md](references/modes.md)의 절차를 손으로 따른다.
 
 ## 스크립트 모드
 
@@ -169,7 +168,7 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/relay.py" --data "${CLAUDE_PLUGIN_DATA}" ro
 | [references/protocol.md](references/protocol.md) | 구성 요소, 명단, CLI 호출, Prime Directive, Phase 0~4 상세와 프롬프트 |
 | [references/formats.md](references/formats.md) | 참가자 JSON 턴, drafts.json, graph.json 형식과 판정 라벨 |
 | [references/output.md](references/output.md) | 최종 보고서와 진행 중 투명성 출력 형식 |
-| [references/modes.md](references/modes.md) | 예측(델파이), 추정, 진단(ACH-lite), 창작(명목집단법), 결정, 가치 판단 모드의 절차와 근거 |
+| [references/modes.md](references/modes.md) | 예측(델파이), 추정, 결정, 가치 판단 모드의 절차와 근거 |
 
 ## 금지 사항
 

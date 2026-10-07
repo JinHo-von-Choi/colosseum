@@ -14,22 +14,6 @@ import calibration as C  # noqa: E402
 import modes as MO  # noqa: E402
 
 
-class Borda(unittest.TestCase):
-    def test_points_and_tie_break(self):
-        out = MO.borda([["I1", "I2", "I3"], ["I2", "I1", "I3"], ["I2"]])
-        self.assertEqual([r["id"] for r in out], ["I2", "I1", "I3"])
-        self.assertEqual(out[0]["points"], 3 + 2 + 3)
-
-    def test_duplicate_votes_in_a_ballot_count_once(self):
-        out = MO.borda([["I1", "I1", "I2"]])
-        self.assertEqual({r["id"]: r["points"] for r in out}, {"I1": 3, "I2": 1})
-
-    def test_equal_points_break_on_voters(self):
-        out = MO.borda([["I1", "I2"], ["I3"]])
-        # I1: 2 points from 1 voter, I3: 2 points from 1 voter, I2: 1 point -> id order breaks the tie
-        self.assertEqual([r["id"] for r in out], ["I1", "I3", "I2"])
-
-
 class Delphi(unittest.TestCase):
     def test_feedback_is_anonymous_statistics(self):
         fb = MO.delphi_feedback([{"label": "A", "value": 0.2}, {"label": "B", "value": 0.5}, {"label": "C", "value": 0.7}])
@@ -45,28 +29,6 @@ class Delphi(unittest.TestCase):
     def test_family_median(self):
         est = [{"family": "claude", "value": 10}, {"family": "claude", "value": 30}, {"family": "gemini", "value": 100}]
         self.assertEqual(MO.family_median(est), (20 + 100) / 2)
-
-
-class Ach(unittest.TestCase):
-    def test_non_diagnostic_evidence_is_dropped(self):
-        rows = [
-            {"id": "E1", "quote_status": "v", "reliability": "high", "ratings": {"H1": "C", "H2": "C"}},
-            {"id": "E2", "quote_status": "v", "reliability": "high", "ratings": {"H1": "C", "H2": "I"}},
-            {"id": "E3", "quote_status": "snippet", "reliability": "low", "ratings": {"H1": "I", "H2": "C"}},
-        ]
-        out = MO.ach(["H1", "H2"], rows)
-        self.assertEqual(out["dropped"], ["E1"])
-        self.assertEqual(out["least_inconsistent"], ["H1", "H2"])
-        self.assertEqual(out["weak_inconsistencies"], {"H1": 1, "H2": 0})
-
-    def test_pooling_is_coherent_and_family_weighted(self):
-        hs = ["H1", "H2"]
-        pooled = MO.log_linear_pool([{"family": "c", "dist": {"H1": 0.9, "H2": 0.1}},
-                                     {"family": "c", "dist": {"H1": 0.9, "H2": 0.1}},
-                                     {"family": "g", "dist": {"H1": 0.1, "H2": 0.9}}], hs)
-        self.assertAlmostEqual(sum(pooled.values()), 1.0, places=2)
-        self.assertAlmostEqual(pooled["H1"], 0.5, places=2)
-        self.assertEqual(MO.coherent({"H1": 2, "H2": 0}, hs)["H2"] > 0, True)
 
 
 class ForecastLog(unittest.TestCase):

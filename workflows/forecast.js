@@ -397,20 +397,6 @@ const LIB = (() => {
   }
 
   // ---- mode aggregation (modes.py) ----
-  function borda(ballots) {
-    const k = ballots.reduce((m, b) => Math.max(m, b.length), 0)
-    const points = {}, voters = {}
-    for (const ballot of ballots) {
-      const seen = new Set()
-      ballot.forEach((idea, rank) => {
-        if (seen.has(idea)) return
-        seen.add(idea)
-        points[idea] = (points[idea] || 0) + (k - rank)
-        voters[idea] = (voters[idea] || 0) + 1
-      })
-    }
-    return Object.keys(points).sort((a, b) => points[b] - points[a] || voters[b] - voters[a] || (a < b ? -1 : a > b ? 1 : 0)).map((id) => ({ id, points: points[id], voters: voters[id] }))
-  }
   function median(xs) {
     const s = [...xs].sort((a, b) => a - b), n = s.length
     if (!n) return null
@@ -430,49 +416,7 @@ const LIB = (() => {
     for (const e of estimates) (byFam[e.family] = byFam[e.family] || []).push(Number(e.value))
     return median(Object.values(byFam).map(median))
   }
-  const ACH_WEIGHT = { v: 1.0, n: 0.0, snippet: 0.5, u: 0.0 }
-  function ach(hypotheses, rows) {
-    const kept = [], dropped = []
-    for (const r of rows) {
-      const ratings = hypotheses.map((h) => r.ratings[h] || 'N')
-      ;(new Set(ratings).size === 1 ? dropped : kept).push(r)
-    }
-    const inconsistency = {}, weak = {}
-    for (const h of hypotheses) {
-      let s = 0, w = 0
-      for (const r of kept) {
-        if (r.ratings[h] === 'I') {
-          s += ACH_WEIGHT[r.quote_status] * RELIABILITY[r.reliability]
-          if (r.quote_status === 'snippet' || r.quote_status === 'n' || r.quote_status === 'u' || r.reliability === 'low') w++
-        }
-      }
-      inconsistency[h] = Math.round(s * 1000) / 1000
-      weak[h] = w
-    }
-    const order = [...hypotheses].sort((a, b) => inconsistency[a] - inconsistency[b] || (a < b ? -1 : 1))
-    return { diagnostic: kept.map((r) => r.id), dropped: dropped.map((r) => r.id), inconsistency, weak_inconsistencies: weak, least_inconsistent: order }
-  }
-  function coherent(dist, hypotheses) {
-    const raw = Object.fromEntries(hypotheses.map((h) => [h, Math.max(0.01, Number(dist[h] || 0))]))
-    const total = hypotheses.reduce((t, h) => t + raw[h], 0)
-    return Object.fromEntries(hypotheses.map((h) => [h, raw[h] / total]))
-  }
-  function logLinearPool(entries, hypotheses) {
-    const famSize = {}
-    for (const e of entries) famSize[e.family] = (famSize[e.family] || 0) + 1
-    const logs = Object.fromEntries(hypotheses.map((h) => [h, 0]))
-    let total = 0
-    for (const e of entries) {
-      const w = 1 / famSize[e.family], d = coherent(e.dist, hypotheses)
-      for (const h of hypotheses) logs[h] += w * Math.log(d[h])
-      total += w
-    }
-    const raw = Object.fromEntries(hypotheses.map((h) => [h, Math.exp(logs[h] / total)]))
-    const z = hypotheses.reduce((t, h) => t + raw[h], 0)
-    return Object.fromEntries(hypotheses.map((h) => [h, Math.round((raw[h] / z) * 1000) / 1000]))
-  }
-
-  return { MATCHER_VERSION, POLICY_VERSION, GRAPH_SCHEMA, normalize, tokenize, matchQuote, normalizeUrl, eligible, baseline, pooledProbability, verdict, checklist, baseScore, originOf, borda, delphiFeedback, limitMove, familyMedian, ach, coherent, logLinearPool }
+  return { MATCHER_VERSION, POLICY_VERSION, GRAPH_SCHEMA, normalize, tokenize, matchQuote, normalizeUrl, eligible, baseline, pooledProbability, verdict, checklist, baseScore, originOf, delphiFeedback, limitMove, familyMedian }
 })()
 // ==== colosseum-lib end ====
 

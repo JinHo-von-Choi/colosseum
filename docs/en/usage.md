@@ -10,8 +10,7 @@ Start the request with a trigger word (`colosseum`, `팩트체크`, `AI 토론`,
 | Decision | "Should we replace polling with a message queue?" | Debate plus the strongest alternative plan and the signals that would favor it |
 | Normative | "Should code review be mandatory for hotfixes?" | Rules on the factual premises; value premises become "if you weigh X over Y, then A" |
 | Forecast, estimate (experimental) | "Will X ship before June 2027?" | Independent estimates, anonymous feedback rounds, pooled forecast |
-| Diagnostic (experimental) | "Why did our p99 latency double last week?" | Competing hypotheses and an evidence matrix |
-| Creative (experimental) | "Name ideas for an internal CLI" | Silent generation, merge, blind ranking |
+| Diagnostic | "Why did our p99 latency double last week?" | Debate between competing causes |
 
 Better questions get better reviews:
 

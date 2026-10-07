@@ -162,7 +162,7 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/relay.py" run --cli <id> --prompt-file "<di
 
 ```
 QUESTION   : [원본 질문]
-TYPE       : [factual / technical / decision / normative / forecast / estimate / diagnostic / creative]
+TYPE       : [factual / technical / decision / normative / forecast / estimate]
 STAKES     : [low / medium / high]
 AS_OF      : [기준 시점. 시간에 민감한 질문이면 명시]
 SEARCH_KW  : [초기 검색 키워드 3-5개]
@@ -173,7 +173,7 @@ BUDGET     : 검색 25 (Phase 1 3, 라운드당 4, 최종 감사 예비 5) / 페
 
 TYPE이 factual이고 Phase 1만으로 답이 확정되면 토론을 생략하고 팩트 베이스 기반 답만 낸다. 확정 조건은 서로 다른 원출처 2곳 이상의 v 인용이 일치하고, 반대 근거가 없는 것이다. 같은 통신 기사나 보도자료를 옮겨 실은 URL 여러 개는 원출처 하나로 센다. 종료 사유는 "토론 불필요"로 기록한다. 이때도 출력 형식은 그대로 쓰되, 기준선 절에는 `BASELINE_VOTE: 해당 없음(토론 불필요)`을 적는다.
 
-TYPE이 decision, normative, forecast, estimate, diagnostic, creative이면 [modes.md](modes.md)의 해당 절차를 따른다. 이 문서의 Phase 1~4는 factual과 technical의 절차이며, decision과 normative는 여기에 modes.md의 단계를 더한다.
+TYPE이 decision, normative, forecast, estimate이면 [modes.md](modes.md)의 해당 절차를 따른다. 이 문서의 Phase 1~4는 factual과 technical의 절차이며, decision과 normative는 여기에 modes.md의 단계를 더한다.
 
 ---
 

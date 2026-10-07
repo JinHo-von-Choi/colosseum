@@ -7,7 +7,8 @@
 | `skills/colosseum/SKILL.md` | The skill: rules, routing, commands per phase |
 | `skills/colosseum/references/` | Protocol, prompts, formats and report layout the skill loads while it runs |
 | `skills/colosseum/scripts/` | Run controller, verdict engine, quote matcher, forecast store, agent relay and registry (Python standard library only) |
-| `workflows/` | `debate.js`, `forecast.js`, `diagnose.js`, `ideate.js` for the Workflow tool |
+| `workflows/` | `debate.js` and `forecast.js` for the Workflow tool |
+| `experimental/` | Unmaintained workflows, not loaded by the plugin |
 | `agents/` | `participant` (web tools only) and `cli-proxy` (runs external agents) |
 | `hooks/hooks.json` | Budget, messaging and turn-format hooks |
 | `tests/` | Unit, parity, boundary and workflow tests |
