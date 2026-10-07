@@ -102,7 +102,7 @@ This links the skill into `~/.claude/skills/colosseum`. For another host, set th
 COLOSSEUM_INSTALL_DEST=<host skills directory>/colosseum ./install.sh
 ```
 
-In this mode there are no hooks, workflows or plugin agents; the skill runs the same procedure through its scripts. `./install.sh --ref <tag>` pins a version. The installer never overwrites a file or link it did not create.
+In this mode there are no hooks, workflows or plugin agents; the skill runs the same procedure through its scripts. Check out a tag before running it to pin a version. The installer never overwrites a file or link it did not create.
 
 ## License
 

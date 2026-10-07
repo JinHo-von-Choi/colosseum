@@ -11,9 +11,9 @@
 | 명령 | 용도 |
 |------|------|
 | `start --session S [--question-file -] [--stakes low\|medium\|high] [--max-rounds 1-3] [--search-budget N] [--fetch-budget N]` | 실행을 연다. 같은 세션에 열린 실행이 있으면 거부한다. 질문은 표준입력으로 `{"question": "..."}` 형태로 넘긴다 |
-| `resume --session S [--expect-question-sha H]` | 열려 있거나 중단된 실행을 마지막 단계부터 이어 간다 |
+| `resume --session S` | 열려 있거나 중단된 실행을 마지막 단계부터 이어 간다 |
 | `restart --session S [--question-file -]` | 현재 실행을 중단 상태로 닫고 새 실행을 연다 |
-| `cancel --session S`, `fail --session S --reason TEXT`, `finish --session S` | 실행을 취소, 실패, 완료로 닫는다 |
+| `close --session S --status cancelled\|failed [--reason TEXT]`, `finish --session S` | 실행을 취소나 실패로, 또는 완료로 닫는다 |
 | `runs --session S` | 세션의 실행 목록 |
 | `materials add --session S [--file -]` | 자료를 실행에 고정한다. 입력: `{"materials": [{"path": ...} \| {"url": ...} \| {"text": ..., "title": ...}]}`. 출력의 `workflow_arg`를 워크플로의 `materials` 인자로 넘긴다 |
 | `materials list --session S` | 실행의 자료 목록 |
@@ -62,7 +62,6 @@
 | `COLOSSEUM_DATA` | 데이터 디렉터리 |
 | `COLOSSEUM_AGENTS` | 선호 에이전트, 쉼표로 구분 |
 | `COLOSSEUM_AGENTS_FILE` | 에이전트 설정 파일 경로 |
-| `COLOSSEUM_DEBUG_LOG=1` | 출처 기록에 가린 질의와 응답 원문을 남긴다 |
 
 ## 데이터 디렉터리
 

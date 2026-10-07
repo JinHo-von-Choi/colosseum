@@ -90,7 +90,7 @@ Agents such as OpenCode, Hermes and OpenClaw can run any model. Set their `famil
 ## Privacy and safety
 
 - The question and the debate prompts go to each selected agent's model provider. Colosseum names them before the run. If the question contains source code, internal documents or personal data, it asks before adding external agents.
-- Prompts never pass through a shell. They are sent on stdin, or as a single program argument for agents that need it (no NUL bytes, at most 100,000 bytes).
+- Prompts never pass through a shell. They are sent on stdin, or as a single program argument for agents that need it.
 - Each agent runs in an empty temporary directory, so a coding agent has no project to edit. Codex runs in its read-only sandbox; the Claude CLI runs with write tools disallowed.
 - A timeout kills the agent and its child processes. The prompt file is deleted after the run.
 

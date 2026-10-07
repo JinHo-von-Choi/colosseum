@@ -7,8 +7,7 @@
   post  (PostToolUse: WebSearch, WebFetch)
         appends one minimal audit record per call to sources.jsonl in the current run's
         directory: event id, tool, success, latency when reported, redacted URLs and
-        hashes of the query and response. Raw query and response text are kept only
-        when COLOSSEUM_DEBUG_LOG=1, and then with credentials redacted.
+        hashes of the query and response. Raw query and response text are never kept.
   subagent-stop (SubagentStop: colosseum:participant)
         sends a malformed participant turn back once with the list of problems.
 
@@ -28,14 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import state as S  # noqa: E402
 import turns  # noqa: E402
 
-EXCERPT = 2000
 SECRET_KEY = re.compile(r"(?i)(token|key|secret|passw|auth|sig|session|credential|cookie|code)")
-SECRET_TEXT = [
-    (re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+"), "Bearer REDACTED"),
-    (re.compile(r"(?i)\b(api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password|passwd|authorization|"
-                r"client[_-]?secret|x-api-key)(\\?[\"']?\s*[:=]\s*\\?[\"']?)([^\s\"'&,}\\]+)"), r"\1\2REDACTED"),
-    (re.compile(r"\b(sk|pk|ghp|gho|ghs|xox[abprs])[-_][A-Za-z0-9_-]{8,}"), "REDACTED"),
-]
 
 
 def redact_url(url):
@@ -49,12 +41,6 @@ def redact_url(url):
         host += ":%d" % p.port
     query = urlencode([(k, "REDACTED" if SECRET_KEY.search(k) else v) for k, v in parse_qsl(p.query, keep_blank_values=True)])
     return urlunsplit((p.scheme, host, p.path, query, ""))
-
-
-def redact_text(text):
-    for pattern, repl in SECRET_TEXT:
-        text = pattern.sub(repl, text)
-    return text
 
 
 def digest(obj):
@@ -121,9 +107,6 @@ def post(event):
         "result_urls": urls,
         "response_sha256": digest(resp) if resp is not None else None,
     }
-    if os.environ.get("COLOSSEUM_DEBUG_LOG") == "1":
-        record["debug"] = {"input": redact_text(json.dumps(tool_input, ensure_ascii=False)),
-                           "response_excerpt": redact_text(json.dumps(resp, ensure_ascii=False)[:EXCERPT])}
     with S.locked(sid):
         st = S.load(sid)
         if not S.is_running(st):

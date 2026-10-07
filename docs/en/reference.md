@@ -11,9 +11,9 @@ Global option: `--data DIR` sets the data directory.
 | Command | Purpose |
 |---------|---------|
 | `start --session S [--question-file -] [--stakes low\|medium\|high] [--max-rounds 1-3] [--search-budget N] [--fetch-budget N]` | Open a run. Refused while another run of the session is open. Pass the question as `{"question": "..."}` on stdin |
-| `resume --session S [--expect-question-sha H]` | Continue the open or interrupted run from its last phase |
+| `resume --session S` | Continue the open or interrupted run from its last phase |
 | `restart --session S [--question-file -]` | Mark the current run interrupted and open a new one |
-| `cancel --session S`, `fail --session S --reason TEXT`, `finish --session S` | Close the run as cancelled, failed or completed |
+| `close --session S --status cancelled\|failed [--reason TEXT]`, `finish --session S` | Close the run as cancelled or failed, or as completed |
 | `runs --session S` | List the session's runs |
 | `materials add --session S [--file -]` | Snapshot materials into the run. Input: `{"materials": [{"path": ...} \| {"url": ...} \| {"text": ..., "title": ...}]}`. Output includes `workflow_arg` for the workflow's `materials` argument |
 | `materials list --session S` | The run's materials |
@@ -62,7 +62,6 @@ These read their input from `--file PATH`, from stdin with `--file -`, or from t
 | `COLOSSEUM_DATA` | Data directory |
 | `COLOSSEUM_AGENTS` | Preferred agents, comma separated |
 | `COLOSSEUM_AGENTS_FILE` | Path of the agents file |
-| `COLOSSEUM_DEBUG_LOG=1` | Keep redacted query and response text in the source log |
 
 ## Data directory
 

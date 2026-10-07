@@ -76,7 +76,7 @@ COLOSSEUM_JSON
 ```
 
 - 결과의 `run_id`와 `run_dir`을 기억한다.
-- 이미 실행 중이라는 거부가 나오면, 같은 질문을 이어 가는 경우 `CTL resume --session ... --expect-question-sha <question_sha256>`로 체크포인트부터 재개하고, 새 질문이면 `CTL restart --session ... --question-file -`로 새 실행을 연다. 이전 실행의 파일은 그 실행의 디렉터리에 남고 새 실행에 섞이지 않는다.
+- 이미 실행 중이라는 거부가 나오면, 같은 질문을 이어 가는 경우 `CTL resume --session ...`으로 체크포인트부터 재개하고, 새 질문이면 `CTL restart --session ... --question-file -`로 새 실행을 연다. 이전 실행의 파일은 그 실행의 디렉터리에 남고 새 실행에 섞이지 않는다.
 - 체크포인트 버전이 맞지 않는다는 거부가 나오면 `restart`만 가능하다.
 - 지난 실행의 파일을 다시 볼 때는 `CTL verdict --session ... --run <run_id>`처럼 `--run`을 명시한다.
 
@@ -132,7 +132,7 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/relay.py" --data "${CLAUDE_PLUGIN_DATA}" ro
    - debate의 decision, technical 모드: 결과 전체(`data`, `graph`, `verdict`)를 `CTL adr --session ... --file -`에 heredoc으로 넘겨 결정 기록을 만든다. 실행 디렉터리에 `decision.md`(ADR)와 `decision.json`이 생긴다. 상태는 `proposed`로 두고, 채택, 보류, 추가 실험은 사용자가 정한다(사용자가 정하면 `--status accepted|rejected|deferred|needs-experiment`로 다시 만든다). PR 게시나 외부 공유는 사용자가 따로 요청할 때만 한다.
    - 사용자가 "이 출처를 빼면?", "이 주장이 입증되지 않았다면?"을 물으면 `CTL whatif --session ... --exclude-evidence <E번호>` 또는 `--unprove-claim <주장 ID>`로 모델 호출 없이 다시 계산해, 바뀐 판정과 그대로인 판정, 변화가 전파된 관계를 보여 준다. 한 번에 하나만 바꾼다. 이 결과는 고정된 그래프 위의 의존성 확인이지 현실에 대한 예측이 아니다.
    - forecast(확률): 결과의 `record`를 `CTL forecast add`에 heredoc으로 넘겨 예측 기록에 남긴다. 해소 시점이 지나면 `CTL forecast resolve --id <id> --outcome 0|1`로 결과를 기록하고, `CTL forecast score`로 Brier 점수와 보정 구간을 본다. 전송이 끊겨 다시 넣을 때는 같은 `--event-id`를 쓴다. `forecast add`가 "has not been imported"로 거부하면 `CTL forecast import`를 먼저 실행한다.
-   - 모든 워크플로: `CTL finish --session ...`로 실행을 닫는다. 워크플로가 실패하면 `CTL fail --session ... --reason "<사유>"`, 사용자가 중단하면 `CTL cancel --session ...`로 닫는다.
+   - 모든 워크플로: `CTL finish --session ...`로 실행을 닫는다. 워크플로가 실패하면 `CTL close --session ... --status failed --reason "<사유>"`, 사용자가 중단하면 `--status cancelled`로 닫는다.
 8. 워크플로가 실패하거나 비활성화되어 있으면 스크립트 모드로 처음부터 진행하고, 그 사실을 결과 머리에 적는다. 예측, 진단, 창작 질문도 스크립트 모드에서는 [references/modes.md](references/modes.md)의 절차를 손으로 따른다.
 
 ## 스크립트 모드

@@ -277,11 +277,9 @@ class RunIsolation(_Cli):
         for phase in ("fact_base", "drafts"):
             self.cli("advance", *self.S, "--to", phase)
         # The moderator process dies here; the checkpoint is what is on disk.
-        code, out = self.cli("resume", *self.S, "--expect-question-sha", run["question_sha256"])
+        code, out = self.cli("resume", *self.S)
         self.assertEqual((code, out["run_id"], out["phase"]), (0, run["run_id"], "drafts"))
-        code, out = self.cli("resume", *self.S, "--expect-question-sha", "0" * 16)
-        self.assertEqual(code, 2)
-        self.cli("cancel", *self.S)
+        self.cli("close", *self.S, "--status", "cancelled")
         code, out = self.cli("resume", *self.S)
         self.assertIn("cancelled", out["refused"])
 

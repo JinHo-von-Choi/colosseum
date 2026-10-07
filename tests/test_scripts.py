@@ -284,7 +284,6 @@ class StateMachineAndHooks(_CliCase):
             rec = json.loads(f.readline())
         self.assertEqual(rec["result_urls"], ["https://a.example/1", "https://b.example/2"])
         self.assertTrue(rec["ok"])
-        self.assertNotIn("debug", rec)
 
     def test_snippet_mode_blocks_fetch(self):
         s = ("--session", "s4")

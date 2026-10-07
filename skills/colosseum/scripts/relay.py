@@ -19,9 +19,9 @@ the file named by $COLOSSEUM_AGENTS_FILE, can add agents, override fields, disab
 also names preferred agents.
 
 Prompts never pass through a shell. An agent marked "prompt": "stdin" gets the prompt bytes
-on stdin. One marked "prompt": "arg" gets it as one argv element; such prompts may not hold
-NUL bytes or exceed 100,000 bytes, and one that starts with "-" is prefixed with a space so
-it cannot be read as an option. Every agent runs in an empty private working directory, so
+on stdin. One marked "prompt": "arg" gets it as one argv element (the operating system
+refuses NUL bytes and over-long arguments); a prompt that starts with "-" is prefixed with
+a space so it cannot be read as an option. Every agent runs in an empty private working directory, so
 a coding agent has no repository to edit. On timeout or cancellation the agent's whole
 process group is killed. Prints one JSON object; exit code 0 on success, 2 otherwise.
 """
@@ -45,7 +45,6 @@ REGISTRY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agents.json
 DEFAULT_TIMEOUT = 180
 MAX_TIMEOUT = 600
 DEFAULT_MAX_OUTPUT = 200000
-MAX_ARG_PROMPT = 100000
 PROBE_PROMPT = "Reply with exactly one word: OK"
 PROBE_TTL = 24 * 3600
 PROBE_TIMEOUT = 90
@@ -168,15 +167,7 @@ def cleanup(prompt_file):
 
 
 def _prompt_arg(prompt):
-    if b"\x00" in prompt:
-        raise RelayError("the prompt contains a NUL byte, which cannot be passed as an argument")
-    if len(prompt) > MAX_ARG_PROMPT:
-        raise RelayError("the prompt is %d bytes; agents that take it as an argument accept at most %d"
-                         % (len(prompt), MAX_ARG_PROMPT))
-    try:
-        text = prompt.decode("utf-8")
-    except UnicodeDecodeError:
-        raise RelayError("the prompt is not valid UTF-8")
+    text = prompt.decode("utf-8", errors="replace")
     return " " + text if text.startswith("-") else text
 
 

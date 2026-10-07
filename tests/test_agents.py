@@ -81,12 +81,12 @@ class AgentRelay(unittest.TestCase):
         self.assertEqual(rows[0]["listing"], [], "the agent must start in an empty directory")
         self.assertNotEqual(rows[0]["cwd"], ROOT)
 
-    def test_arg_mode_refuses_nul_and_oversized_prompts(self):
+    def test_arg_mode_fails_cleanly_on_prompts_the_os_refuses(self):
         self.fake("kimi")
-        code, out = self.send("kimi", b"a\x00b")
-        self.assertIn("NUL", out["error"])
-        code, out = self.send("kimi", "x" * (R.MAX_ARG_PROMPT + 1))
-        self.assertIn("at most", out["error"])
+        for prompt in (b"a\x00b", b"x" * 300000):
+            code, out = self.send("kimi", prompt)
+            self.assertEqual(code, 2)
+            self.assertFalse(out["ok"])
         self.assertFalse(os.path.exists(self.capture))
 
     def test_stdin_agents_and_templates(self):
