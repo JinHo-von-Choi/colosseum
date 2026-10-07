@@ -7,19 +7,29 @@
 | `skills/colosseum/SKILL.md` | 스킬 본체: 규칙, 질문 유형별 분기, 단계별 명령 |
 | `skills/colosseum/references/` | 스킬이 실행 중에 읽는 절차, 프롬프트, 형식, 보고서 양식 |
 | `skills/colosseum/scripts/` | 실행 관리, 판정 엔진, 인용 대조, 예측 저장소, 에이전트 중계와 등록부 (Python 표준 라이브러리만 사용) |
-| `workflows/` | Workflow 도구용 `debate.js`, `forecast.js`, `diagnose.js`, `ideate.js` |
+| `workflows/` | Workflow 도구용 `debate.js`, `forecast.js` |
+| `experimental/` | 플러그인이 읽지 않는 유지보수 중단 워크플로 |
 | `agents/` | `participant`(웹 도구만 사용), `cli-proxy`(외부 에이전트 실행) |
 | `hooks/hooks.json` | 예산, 메시지 차단, 응답 형식 훅 |
 | `tests/` | 단위, 언어 간 일치, 경계, 워크플로 시험 |
 | `evals/` | `claude plugin eval` 평가 사례 |
 
-워크플로는 파일을 가져올 수 없어서 네 파일이 같은 `colosseum-lib`, `colosseum-runtime` 블록을 각자 들고 있다. `workflows/debate.js`에서 고친 뒤 나머지에 복사한다.
+워크플로는 파일을 가져올 수 없어서 각 파일이 같은 `colosseum-lib`, `colosseum-runtime` 블록을 각자 들고 있다. `workflows/debate.js`에서 고친 뒤 나머지에 복사한다.
 
 ```bash
 python3 tools/sync_workflow_blocks.py
 ```
 
 복사본이 다르면 시험이 실패한다.
+
+## 방어 코드를 넣는 조건
+
+검사, 대체 경로, 예외 처리는 다음 중 하나일 때만 넣는다.
+
+- 그 코드가 막는 실패를 재현하는 시험이 있다
+- 이름을 댈 수 있는 신뢰 경계에 있다: 사용자 입력, 외부 에이전트 출력, 웹 원문, 파일 시스템, 셸
+
+검증은 그 경계에서 한 번만 하고, 안쪽에서는 데이터를 믿는다. 앞 단계에서 이미 걸러진 상태를 다시 막지 않는다. 실험 기능은 동작하는 가장 작은 형태로 만든다. 휴리스틱 단어 목록은 실제 실패 사례가 있을 때만 늘린다. 시험은 사용자가 보는 동작을 확인하고 내부 구조를 고정하지 않는다.
 
 ## 시험
 

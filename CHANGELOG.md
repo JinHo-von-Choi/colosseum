@@ -2,16 +2,18 @@
 
 [한국어](CHANGELOG.ko.md)
 
-## 1.0.0 (2026-10-05)
+## 1.0.0 (2026-10-07)
 
 First stable release. Version numbers restart here; the versions below were published under the earlier numbering.
 
 - Reads the materials you point it at (files, directories, URLs, pasted text) before the debate, so participants argue about your case. Quotes from files are checked against a fixed snapshot.
 - Blind drafts from independent agents, a vote baseline recorded before the debate, quote-checked evidence rounds and a deterministic verdict engine.
 - Quote checks that catch changed numbers, signs, negations, comparisons and dropped conditions, with support judged per claim.
-- Uses the AI agent CLIs installed on the machine (Codex, Gemini CLI, Kimi Code, MiniMax Code, OpenCode, Hermes Agent, OpenClaw and others) as participants from other model families.
+- Uses the AI agent CLIs installed on the machine (Codex, Gemini CLI, Kimi Code, MiniMax Code, OpenCode, Hermes Agent, OpenClaw and others) as participants from other model families. External agents choose their own search queries each turn and get the raw results. `--host-family` tells the roster which family the host's own model belongs to.
 - Decision records (ADR Markdown and JSON) and what-if recomputation without model calls.
 - Isolated runs with resume and restart, and a transactional forecast store.
+- Quote checks count only word-for-word matches; a near match is `u`, not "needs review".
+- The diagnostic and idea-generation workflows moved to `experimental/` and are no longer loaded; causal questions go through the debate.
 - Runs in agent hosts that load skills; the Claude Code plugin adds workflows, hooks and dedicated agents.
 - Documentation in English and Korean.
 
@@ -20,7 +22,7 @@ First stable release. Version numbers restart here; the versions below were publ
 ### 3.3.0-beta.1 (2026-10-05)
 
 #### Added
-- Uses the AI agent CLIs installed on the machine as participants: Codex, Gemini CLI, Kimi Code, MiniMax Code, Qwen Code, OpenCode, Hermes Agent, OpenClaw, Cursor CLI, Copilot CLI, Crush, Amp, Goose, llm, aichat, Ollama and the Claude Code CLI.
+- Uses the AI agent CLIs installed on the machine as participants: Codex, Gemini CLI, Kimi Code, MiniMax Code, OpenCode, Hermes Agent, OpenClaw, llm, Ollama and the Claude Code CLI; others can be added in a settings file.
 - `relay.py detect --probe` lists installed agents and checks that each one answers.
 - `relay.py roster` puts agents named by the user first, then fills seats with one agent per model family, keeps one Claude participant for web search, and picks a juror from another family.
 - An `agents.json` file in the data directory adds agents, changes their settings, disables them or sets a preference order. `COLOSSEUM_AGENTS` sets the order from the environment.

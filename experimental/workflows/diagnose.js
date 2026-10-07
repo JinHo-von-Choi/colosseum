@@ -1,13 +1,16 @@
 export const meta = {
-  name: 'ideate',
-  description: 'Colosseum creative mode (experimental): nominal group technique with silent generation, merge, blind ranking and Borda count',
-  whenToUse: 'Launched by the colosseum skill for idea generation and naming; not for direct use',
+  name: 'diagnose',
+  description: 'Colosseum diagnostic mode (experimental): competing hypotheses, evidence diagnosticity matrix, pooled probabilities',
+  whenToUse: 'Launched by the colosseum skill for "why did X happen" questions; not for direct use',
   phases: [
     { title: 'Materials', detail: 'read the materials the user supplied' },
-    { title: 'Generate', detail: 'silent parallel idea generation' },
-    { title: 'Merge', detail: 'remove duplicates, keep sources' },
-    { title: 'Rank', detail: 'independent blind rankings' },
-    { title: 'Report', detail: 'Borda result and report' },
+    { title: 'Fact base', detail: 'opposing-angle searches and source records' },
+    { title: 'Hypotheses', detail: 'blind hypotheses with evidence' },
+    { title: 'Verify', detail: 'quote checks against fetched pages' },
+    { title: 'Matrix', detail: 'consistency of each piece of evidence with each hypothesis' },
+    { title: 'Probabilities', detail: 'blind probability distributions, pooled' },
+    { title: 'Premortem', detail: 'assume the leading hypothesis is wrong' },
+    { title: 'Report', detail: 'final report' },
   ],
 }
 
@@ -30,11 +33,10 @@ const LIB = (() => {
   const MARGIN = 0.15
   const THETA = 0.5
   const MAX_UNDEC = 16
-  const NEAR = 0.9
   const CLIP = [0.02, 0.98]
 
-  // ---- quote matching (quote_match.py, matcher quote-match/2) ----
-  const MATCHER_VERSION = 'quote-match/2'
+  // ---- quote matching (quote_match.py, matcher quote-match/3) ----
+  const MATCHER_VERSION = 'quote-match/3'
   const CHAR_MAP = {
     '‘': "'", '’': "'", '‚': "'", '‛': "'", '′': "'",
     '“': '"', '”': '"', '„': '"', '‟': '"', '″': '"',
@@ -46,13 +48,6 @@ const LIB = (() => {
   const KEEP_SYMBOLS = new Set('<>=≤≥≠≈$€£¥₩%‰')
   const COMPARE_SYMBOLS = new Set('<>=≤≥≠≈')
   const SENTENCE_END = new Set('!?\n。')
-  const NEGATIONS = new Set(['not', 'no', 'never', 'none', 'nor', 'neither', 'cannot', 'without', 'nobody', 'nothing', 'nowhere',
-    '안', '못', '미', '비', '불', '무'])
-  const NEGATION_PARTS = ['않', '없', '아니', '못하', '불가']
-  const COMPARATORS = new Set(['more', 'less', 'fewer', 'greater', 'over', 'under', 'above', 'below', 'least', 'most',
-    'than', 'exceed', 'exceeds', 'exceeded', 'up', 'down', 'rose', 'fell', 'increase', 'decrease',
-    'increased', 'decreased', 'higher', 'lower', '이상', '이하', '미만',
-    '초과', '이내', '넘게', '이상의', '이하의'])
   const QUALIFIERS = new Set(['if', 'unless', 'when', 'whenever', 'only', 'except', 'excluding', 'provided', 'assuming', 'until',
     '단', '다만', '만약', '경우', '경우에', '경우에는',
     '조건', '한해', '제외하고', '제외하면'])
@@ -117,12 +112,8 @@ const LIB = (() => {
     }
     return [toks, ends]
   }
-  const isNegation = (t) => NEGATIONS.has(t) || t.endsWith("n't") || NEGATION_PARTS.some((p) => t.includes(p))
-  const isComparator = (t) => COMPARATORS.has(t) || COMPARE_SYMBOLS.has(t)
   const isQualifier = (t) => QUALIFIERS.has(t) || (Array.from(t).length >= 2 && t.charCodeAt(0) >= 128 && QUALIFIER_SUFFIXES.some((s) => t.endsWith(s)))
-  const hasDigit = (t) => Array.from(t).some(isDigit)
   const cmpStr = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
-  const guarded = (tokens) => [...new Set(tokens.filter((t) => hasDigit(t) || isNegation(t) || isComparator(t)))].sort(cmpStr)
   function findRun(q, p) {
     for (let s = 0; s + q.length <= p.length; s++) {
       let k = 0
@@ -130,31 +121,6 @@ const LIB = (() => {
       if (k === q.length) return s
     }
     return -1
-  }
-  function lcs(a, b) {
-    let prev = new Array(b.length + 1).fill(0)
-    for (const x of a) {
-      const cur = [0]
-      for (let j = 0; j < b.length; j++) cur.push(x === b[j] ? prev[j] + 1 : Math.max(prev[j + 1], cur[j]))
-      prev = cur
-    }
-    return prev[b.length]
-  }
-  function bestWindow(q, p) {
-    if (!q.length || !p.length) return [0, 0, 0]
-    const qset = new Set(q), size = q.length + 3
-    let best = 0, bs = 0, be = 0
-    const last = Math.max(1, p.length - q.length + 1)
-    for (let start = 0; start < last; start++) {
-      const seg = p.slice(start, start + size)
-      if (q.length >= 3 && seg.filter((t) => qset.has(t)).length < NEAR * q.length) continue
-      const ratio = lcs(q, seg) / q.length
-      if (ratio > best) {
-        best = ratio; bs = start; be = start + seg.length
-        if (best === 1) break
-      }
-    }
-    return [best, bs, be]
   }
   function matchQuote(quote, page) {
     const [q] = tokenize(normalize(quote))
@@ -173,18 +139,7 @@ const LIB = (() => {
       if (dropped.length) return Object.assign(out, { status: 'n', kind: 'qualifier_omitted', reason: 'quote leaves out part of its sentence that carries a condition or scope: ' + dropped.join(', ') })
       return Object.assign(out, { status: 'v', reason: 'exact' })
     }
-    const [ratio, ws, we] = bestWindow(q, p)
-    const score = Math.round(ratio * 1000) / 1000
-    out.score = score
-    if (score < NEAR) return Object.assign(out, { status: 'u', reason: 'not found on the page' })
-    const qset = new Set(q)
-    let window = p.slice(ws, we)
-    while (window.length && !qset.has(window[0])) window = window.slice(1)
-    while (window.length && !qset.has(window[window.length - 1])) window = window.slice(0, -1)
-    const gq = guarded(q), gw = guarded(window)
-    if (JSON.stringify(gq.filter(hasDigit)) !== JSON.stringify(gw.filter(hasDigit))) return Object.assign(out, { status: 'u', reason: 'numbers or signs differ from the page' })
-    if (JSON.stringify(gq) !== JSON.stringify(gw)) return Object.assign(out, { status: 'u', reason: 'negation or comparison differs from the page' })
-    return Object.assign(out, { status: 'n', kind: 'near', span: [ws, we], reason: 'near match; review required' })
+    return Object.assign(out, { status: 'u', score: 0, reason: 'not found on the page' })
   }
 
   // ---- baseline (baseline.py) ----
@@ -523,20 +478,17 @@ const LIB = (() => {
 
 // ---------------------------------------------------------------------------
 // args:
-//   question : the creative task
-//   criteria : optional list of judging criteria
+//   question : the diagnostic question ("why did X happen")
+//   as_of    : today "YYYY-MM-DD"
 //   roster   : [{label, family, cli?}, ...]
-//   ideas    : ideas per participant (default 5)
-//   top      : ideas each participant ranks (default 5)
+//   budget   : optional {search, fetch}
 // ---------------------------------------------------------------------------
 
 const A = args || {}
 if (!A.question || !Array.isArray(A.roster) || A.roster.length < 2) {
-  throw new Error('colosseum:ideate needs args.question and a roster of at least 2 participants')
+  throw new Error('colosseum:diagnose needs args.question and a roster of at least 2 participants')
 }
-const PER = Math.min(8, Math.max(3, A.ideas || 5))
-const TOP = Math.min(8, Math.max(3, A.top || 5))
-const CRITERIA = (A.criteria && A.criteria.length ? A.criteria : ['과제에 맞는가', '독창적인가', '실행할 수 있는가']).join(', ')
+const AS_OF = A.as_of || 'unspecified'
 
 // ==== colosseum-runtime begin ====
 // Shared by every Colosseum workflow: participant turns, the evidence registry, quote checks
@@ -598,16 +550,12 @@ async function readMaterials(question) {
 }
 
 // ---- evidence: page acquisition, quote checks and support assessments ----
-// One evidence record binds one quote to one claim. Three caches keep their own keys:
-//   acquisitions : normalized URL + quote -> page passage or snippet, source fields (fetched once)
-//   quote checks : content hash + quote + matcher version (pure, recomputed from the cached text)
-//   assessments  : claim id + claim text hash + quote key + context hash + policy version -> support
-// A new claim citing an already fetched quote reuses the acquisition but gets its own
-// support assessment, so a judgment made for one claim never leaks to another.
+// One evidence record binds one quote to one claim. A page is fetched once per URL and
+// quote; a new claim citing it reuses the fetch but gets its own support judgment, so a
+// judgment made for one claim never leaks to another.
 const evidence = []
 const evidenceByKey = {}
 const acquisitions = {}
-const assessments = {}
 const failedHosts = new Set()
 let fetchesUsed = 0
 let degraded = false
@@ -692,15 +640,10 @@ function acquire(url, quote, claimText, phaseName) {
   return acquisitions[key]
 }
 
-async function assess(aKey, acq, claimHash, quote, claimText, phaseName) {
-  if (!assessments[aKey]) {
-    assessments[aKey] = (async () => {
-      if (acq.assessed && acq.assessed.claimHash === claimHash) return { support: acq.assessed.support, support_reason: acq.assessed.support_reason }
-      const r = await agent(SUPPORT_RUBRIC + '\n\n주장: ' + claimText + '\n인용: ' + quote + '\n인용의 문맥(원문): ' + acq.text, { schema: S_SUPPORT, phase: phaseName, label: 'support:' + textHash(aKey).slice(0, 6), effort: 'low' })
-      return r ? { support: r.support, support_reason: r.support_reason || '' } : { support: 'unknown', support_reason: 'no assessment returned' }
-    })()
-  }
-  return assessments[aKey]
+async function assess(acq, claimHash, quote, claimText, phaseName) {
+  if (acq.assessed && acq.assessed.claimHash === claimHash) return { support: acq.assessed.support, support_reason: acq.assessed.support_reason }
+  const r = await agent(SUPPORT_RUBRIC + '\n\n주장: ' + claimText + '\n인용: ' + quote + '\n인용의 문맥(원문): ' + acq.text, { schema: S_SUPPORT, phase: phaseName, label: 'support:' + claimHash.slice(0, 6), effort: 'low' })
+  return r ? { support: r.support, support_reason: r.support_reason || '' } : { support: 'unknown', support_reason: 'no assessment returned' }
 }
 
 // claimId is the graph claim id when the caller has one; the claim text hash is always
@@ -724,8 +667,7 @@ async function checkEvidence(url, quote, claimText, phaseName, claimId) {
   if (acq.acquisition === 'material') e.material = String(url).slice(9)
   e.quote_status = acq.acquisition === 'snippet' ? (m.status === 'v' ? 'snippet' : m.status === 'n' ? 'n' : 'u') : m.status
   if (e.quote_status === 'u') return e
-  e.assessment_key = [claimId || '', claimHash, e.quote_key, e.match.content_hash, LIB.POLICY_VERSION].join('|')
-  const a = await assess(e.assessment_key, acq, claimHash, quote, claimText, phaseName)
+  const a = await assess(acq, claimHash, quote, claimText, phaseName)
   e.support = a.support
   e.support_reason = a.support_reason
   return e
@@ -760,38 +702,64 @@ async function buildFactBase(question, asOf, extra) {
 
 // ============================================================================
 if (MATERIALS.length) { phase('Materials'); await readMaterials(A.question) }
-phase('Generate')
-const S_IDEAS = { type: 'object', properties: { ideas: { type: 'array', maxItems: PER, items: { type: 'object', properties: { title: { type: 'string' }, description: { type: 'string' } }, required: ['title', 'description'] } } }, required: ['ideas'] }
-const gen = (await parallel(A.roster.map((p) => () => turn(p, 'ideator', '과제: ' + A.question + '\n판단 기준: ' + CRITERIA + (MATERIALS_TEXT ? '\n\n' + MATERIALS_TEXT : '') + '\n\n서로 확실히 다른 아이디어를 ' + PER + '개 내라. 다른 참가자의 아이디어는 보이지 않는다. 검색은 필요할 때만 한다.', S_IDEAS, 'Generate').then((d) => (d ? { p, ideas: d.ideas || [] } : null))))).filter(Boolean)
-if (gen.length < 2) throw new Error('fewer than 2 participants produced ideas')
-const raw = gen.flatMap((g) => g.ideas.map((idea, i) => ({ ref: g.p.label + (i + 1), title: idea.title, description: idea.description })))
+phase('Fact base')
+const FB = await buildFactBase(A.question, AS_OF)
 
 // ============================================================================
-phase('Merge')
-const S_MERGED = { type: 'object', properties: { ideas: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' }, description: { type: 'string' }, sources: { type: 'array', items: { type: 'string', enum: raw.map((r) => r.ref) } } }, required: ['id', 'title', 'description', 'sources'] } } }, required: ['ideas'] }
-const merged = await agent('아래 아이디어들에서 사실상 같은 것끼리만 합쳐라. 비슷해 보여도 핵심이 다르면 따로 둔다. 각 결과에 I1, I2, ... 순서로 id를 붙이고, 합쳐진 원래 참조(sources)를 모두 적어라. 모든 원래 참조는 정확히 한 결과에 들어가야 한다. 제목과 설명은 원래 표현을 최대한 살린다.\n\n' + raw.map((r) => r.ref + ': ' + r.title + ' | ' + r.description).join('\n'), { schema: S_MERGED, phase: 'Merge', label: 'merge', effort: 'low' })
-const pool = ((merged && merged.ideas) || []).map((m, i) => ({ id: 'I' + (i + 1), title: m.title, description: m.description, sources: m.sources }))
-const covered = new Set(pool.flatMap((m) => m.sources))
-for (const r of raw) if (!covered.has(r.ref)) pool.push({ id: 'I' + (pool.length + 1), title: r.title, description: r.description, sources: [r.ref] })
-log('아이디어 ' + raw.length + '개 → 중복 제거 후 ' + pool.length + '개')
+phase('Hypotheses')
+const S_HYP = { type: 'object', properties: { hypotheses: { type: 'array', maxItems: 2, items: { type: 'object', properties: { text: { type: 'string' }, why: { type: 'string' } }, required: ['text', 'why'] } }, claims: S_CLAIMS, key_assumptions: { type: 'array', items: { type: 'string' }, maxItems: 3 } }, required: ['hypotheses', 'claims', 'key_assumptions'] }
+const drafts = (await parallel(A.roster.map((p, i) => () => turn(p, 'diagnostician', '질문: ' + A.question + '\n기준 시점: ' + AS_OF + '\n검색 출발점: ' + ANGLES[i % ANGLES.length] + '\n참고 팩트:\n' + FB.text + '\n\n원인에 대한 가설을 최대 2개 세우고, 각 가설을 뒷받침하거나 반박하는 사실을 claims에 URL과 원문 인용으로 적어라. 다른 참가자의 가설은 보이지 않는다.', S_HYP, 'Hypotheses').then((d) => (d ? { p, d } : null))))).filter(Boolean)
+if (drafts.length < 2) throw new Error('fewer than 2 participants proposed hypotheses')
+
+phase('Verify')
+for (const x of drafts) x.evs = await checkClaims(x.d.claims, 'Verify')
+
+const S_CONS = { type: 'object', properties: { hypotheses: { type: 'array', maxItems: 5, items: { type: 'object', properties: { text: { type: 'string' }, from: { type: 'array', items: { type: 'string' } } }, required: ['text', 'from'] } } }, required: ['hypotheses'] }
+const cons = await agent('아래 가설들을 서로 배타적인 가설 최대 5개로 정리하라. 사실상 같은 것은 합치고, 합친 원래 라벨을 from에 적어라.\n\n' + drafts.flatMap((x) => x.d.hypotheses.map((h) => x.p.label + ': ' + h.text + ' (' + h.why + ')')).join('\n'), { schema: S_CONS, phase: 'Hypotheses', label: 'consolidate', effort: 'low' })
+const H = ((cons && cons.hypotheses) || []).map((h, i) => ({ id: 'H' + (i + 1), text: h.text }))
+H.push({ id: 'H0', text: '위 가설들로 설명되지 않는 다른 원인' })
+const hids = H.map((h) => h.id)
 
 // ============================================================================
-phase('Rank')
-const ids = pool.map((m) => m.id)
-const S_RANK = { type: 'object', properties: { ranking: { type: 'array', maxItems: Math.min(TOP, ids.length), items: { type: 'string', enum: ids } }, reasons: { type: 'string' } }, required: ['ranking', 'reasons'] }
-const listing = pool.map((m) => m.id + ': ' + m.title + ' | ' + m.description).join('\n')
-const ballots = (await parallel(A.roster.map((p) => () => turn(p, 'ranker', '과제: ' + A.question + '\n판단 기준: ' + CRITERIA + '\n\n아래 아이디어 가운데 가장 좋은 것부터 최대 ' + Math.min(TOP, ids.length) + '개를 골라 순위대로 id를 적어라. 누가 낸 아이디어인지는 표시되지 않는다. 자기 아이디어를 편들지 마라.\n\n' + listing, S_RANK, 'Rank').then((b) => (b ? { label: p.label, ranking: b.ranking, reasons: b.reasons } : null))))).filter(Boolean)
-const result = LIB.borda(ballots.map((b) => b.ranking))
+phase('Matrix')
+const rows = [...FB.evs, ...drafts.flatMap((x) => x.evs)].filter(Boolean).filter((e, i, arr) => arr.findIndex((y) => y.id === e.id) === i)
+const ratingProps = Object.fromEntries(hids.map((h) => [h, { type: 'string', enum: ['C', 'I', 'N'] }]))
+const S_RATE = { type: 'object', properties: { ratings: { type: 'object', properties: ratingProps, required: hids } }, required: ['ratings'] }
+const hypList = H.map((h) => h.id + ': ' + h.text).join('\n')
+const rated = (await parallel(rows.map((e) => () => agent('증거: "' + e.quote + '" (' + e.url + ')\n이 증거가 드러내는 사실: ' + (e.claim || '') + '\n\n가설마다 이 증거가 가설과 일관되면 C, 가설과 맞지 않으면 I, 관계가 없으면 N으로 매겨라. 가설이 참이라면 이 증거가 나올 법한지를 기준으로 삼는다.\n\n' + hypList, { schema: S_RATE, phase: 'Matrix', label: 'rate:' + e.id, effort: 'low' }).then((r) => (r ? { id: e.id, quote_status: e.quote_status, reliability: e.reliability, ratings: r.ratings } : null))))).filter(Boolean)
+const matrix = LIB.ach(hids, rated)
+log('진단적 증거 ' + matrix.diagnostic.length + '개, 비진단적 제외 ' + matrix.dropped.length + '개')
+
+// ============================================================================
+phase('Probabilities')
+const probProps = Object.fromEntries(hids.map((h) => [h, { type: 'number', minimum: 0, maximum: 1 }]))
+const S_DIST = { type: 'object', properties: { dist: { type: 'object', properties: probProps, required: hids }, reason: { type: 'string' } }, required: ['dist', 'reason'] }
+const matrixText = rated.filter((r) => matrix.diagnostic.includes(r.id)).map((r) => r.id + ' [' + r.quote_status + ', ' + r.reliability + ']: ' + hids.map((h) => h + '=' + r.ratings[h]).join(' ')).join('\n')
+const dists = (await parallel(drafts.map((x) => () => turn(x.p, 'estimator', '질문: ' + A.question + '\n\n가설:\n' + hypList + '\n\n진단적 증거 행렬(C 일관, I 불일치, N 무관):\n' + (matrixText || '진단적 증거 없음') + '\n\n각 가설이 참일 확률을 적어라. 합이 1이 되게 하라. 불일치(I) 증거가 많은 가설일수록 낮게 보되, 약한 증거(snippet, low)에 기댄 불일치는 덜 믿어라. 다른 참가자의 확률은 보이지 않는다.', S_DIST, 'Probabilities').then((d) => (d ? { family: x.p.family, label: x.p.label, dist: d.dist, reason: d.reason } : null))))).filter(Boolean)
+const pooled = LIB.logLinearPool(dists, hids)
+const ranking = hids.slice().sort((a, b) => pooled[b] - pooled[a])
+
+// ============================================================================
+phase('Premortem')
+const lead = H.find((h) => h.id === ranking[0])
+const critic = drafts.find((x) => !(((cons && cons.hypotheses) || [])[Number(lead.id.slice(1)) - 1] || { from: [] }).from.includes(x.p.label)) || drafts[drafts.length - 1]
+const premortem = await turn(critic.p, 'premortem', '가장 유력한 원인으로 판단된 가설 "' + lead.text + '"이 틀린 것으로 확정되었다.\n질문: ' + A.question + '\n가장 그럴듯한 이유 3가지와 확인 방법을 적고, 적어도 하나는 검색해 claims에 URL과 원문 인용으로 붙여라. underconfidence에는 이 가설을 오히려 더 확신해도 되는 가장 강한 근거를 적어라.', S_PREMORTEM, 'Premortem')
+const premortemEvs = premortem ? await checkClaims(premortem.claims, 'Premortem') : []
 
 // ============================================================================
 phase('Report')
 const data = {
   status: 'experimental',
   materials: MATERIALS.map((m) => ({ id: m.id, title: m.title, kind: m.kind })),
-  question: A.question, criteria: CRITERIA, roster: gen.map((g) => ({ label: g.p.label, family: g.p.family })),
+  question: A.question, as_of: AS_OF, roster: drafts.map((x) => ({ label: x.p.label, family: x.p.family })),
   roster_kind: new Set(A.roster.map((p) => p.family)).size < 2 ? '동종 명단' : '이질 명단',
-  generated: raw.length, merged: pool, ballots, borda: result.map((r) => Object.assign({}, r, pool.find((m) => m.id === r.id))),
+  verification: verificationSummary(),
+  fact_base: FB.list.map((f, i) => ({ id: 'F' + (i + 1), claim: f.claim, url: f.url, check: FB.evs[i] && FB.evs[i].quote_status })),
+  hypotheses: H, matrix: { rows: rated, summary: matrix }, distributions: dists, pooled, ranking,
+  premortem: premortem && { causes: premortem.causes, underconfidence: premortem.underconfidence, evidence: premortemEvs.filter(Boolean).map((e) => ({ id: e.id, url: e.url, check: e.quote_status, support: e.support })) },
+  evidence: evidence.map((e) => ({ id: e.id, url: e.url, quote: e.quote, reliability: e.reliability, acquisition: e.acquisition, check: e.quote_status, check_reason: e.match ? e.match.reason : null, support: e.support, support_reason: e.support_reason, note: e.note })),
+  budget: { fetches: fetchesUsed + '/' + FETCH_BUDGET, failed_hosts: [...failedHosts] },
 }
-const report = await agent('아래 JSON은 Colosseum 창작 모드(명목집단법) 결과다. 이 모드는 실험 단계다(status: experimental). 보고서 첫 줄에 "실험 모드: 정확도와 보정이 검증되지 않았다"를 적어라. 이 데이터만으로 한국어 보고서를 써라. 형식:\n\n=== COLOSSEUM (창작) ===\n과제, 판단 기준, 명단(이질/동종), 생성 수와 중복 제거 후 수\n## 순위 (표: 순위, 아이디어, 점수, 표를 준 참가자 수, 출처 라벨)\n## 상위 아이디어 설명 (상위 3개, 순위 투표의 이유 요약)\n## 나머지 아이디어 (제목만)\n## 메타 정보 (Borda 방식: 1위에 K점부터 1점까지, 동점은 표를 준 참가자 수로 가림)\n\n' + JSON.stringify(data), { phase: 'Report', label: 'report' })
+const report = await agent('아래 JSON은 Colosseum 진단 모드 결과다. 이 모드는 실험 단계다(status: experimental). 보고서 첫 줄에 "실험 모드: 정확도와 보정이 검증되지 않았다"를 적어라. 이 데이터만으로 한국어 보고서를 써라. 데이터에 없는 사실을 보태지 마라. 형식:\n\n=== COLOSSEUM (진단) ===\n질문, 기준 시점, 명단(이질/동종), 모드\n## 가설 (id와 내용)\n## 원인 확률 (풀링된 확률 순위, UNCALIBRATED. 참가자별 분포 요약)\n## 증거 행렬 (진단적 증거만 표로: 증거, 대조 결과, 신뢰도, 가설별 C/I/N. 제외된 비진단적 증거 수)\n## 불일치 점수 (가설별 가중 불일치와 약한 증거에 기댄 불일치 수. 이 점수는 설명용이며 확률을 정하지 않았다고 밝힌다)\n## 사전부검 (원인과 확인 방법, 증거 반영/기각)\n## 이 결론이 틀릴 수 있는 조건\n## 출처\n\n' + JSON.stringify(data), { phase: 'Report', label: 'report' })
 
 return { report, data }

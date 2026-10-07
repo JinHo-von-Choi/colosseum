@@ -3,8 +3,7 @@
   start        create a run for this session (refused while one is running)
   resume       continue the session's running or interrupted run from its checkpoint
   restart      stop the current run as interrupted and start a new one
-  cancel       close the current run as cancelled
-  fail         close the current run as failed, with a reason
+  close        close the current run as cancelled or failed
   runs         list this session's runs
   status       print state and the next allowed phases
   advance      move to the next phase (illegal transitions are refused)
@@ -165,10 +164,6 @@ def cmd_resume(a):
             raise Refused("checkpoint version %s is not supported; use restart" % st.get("schema"))
         if st.get("status") not in ("running", "interrupted"):
             raise Refused("run %s is %s; closed runs cannot be resumed, use start" % (st.get("run_id"), st.get("status")))
-        if st.get("phase") not in S.PHASES or not os.path.isdir(S.run_path(a.session, st["run_id"], a.data)):
-            raise Refused("checkpoint of run %s is damaged (phase %r); use restart" % (st.get("run_id"), st.get("phase")))
-        if a.expect_question_sha and a.expect_question_sha != st.get("question_sha256"):
-            raise Refused("run %s belongs to a different question; use restart" % st["run_id"])
         st["status"] = "running"
         st.setdefault("resumed", []).append(S.now())
         S.save(a.session, st, a.data)
@@ -176,18 +171,11 @@ def cmd_resume(a):
                  "run_dir": S.run_path(a.session, st["run_id"], a.data), "next": _next_allowed(st)})
 
 
-def cmd_cancel(a):
+def cmd_close(a):
     with S.locked(a.session, a.data):
         st = _running(a)
-        _close(a, st, "cancelled")
-    return emit({"ok": True, "run_id": st["run_id"], "status": "cancelled"})
-
-
-def cmd_fail(a):
-    with S.locked(a.session, a.data):
-        st = _running(a)
-        _close(a, st, "failed", failure=a.reason)
-    return emit({"ok": True, "run_id": st["run_id"], "status": "failed"})
+        _close(a, st, a.status, reason=a.reason)
+    return emit({"ok": True, "run_id": st["run_id"], "status": a.status})
 
 
 def cmd_runs(a):
@@ -430,14 +418,14 @@ def cmd_forecast(a):
     if a.action == "add":
         if a.file and a.file != "-":
             with open(a.file, encoding="utf-8") as f:
-                rec = C.add(root, json.load(f), a.event_id)
+                rec = C.add(root, json.load(f))
         else:
-            rec = C.add(root, json.load(sys.stdin), a.event_id)
+            rec = C.add(root, json.load(sys.stdin))
         return emit({"ok": True, "logged": rec["id"], "created": rec["created"], "store": C.db_path(root)})
     if a.action == "resolve":
         if not a.id or a.outcome is None:
             raise ValueError("resolve needs --id and --outcome")
-        return emit({"ok": True, "resolved": C.resolve(root, a.id, a.outcome, a.event_id)})
+        return emit({"ok": True, "resolved": C.resolve(root, a.id, a.outcome)})
     if a.action == "import":
         return emit(C.import_jsonl(root, None if a.file in (None, "-") else a.file))
     if a.action == "export":
@@ -447,8 +435,6 @@ def cmd_forecast(a):
             return emit({"ok": True, "exported": text.count("\n"), "file": a.file})
         sys.stdout.write(text)
         return 0
-    if a.action == "status":
-        return emit(C.status(root))
     records = C.load(root)
     if a.action == "list":
         return emit({"forecasts": [{k: r.get(k) for k in ("id", "question", "resolve_by", "p_final", "outcome")}
@@ -479,13 +465,11 @@ def parser():
             sp.add_argument("--force", action="store_true", help="same as restart")
         sp.set_defaults(fn=fn)
 
-    sp = with_session(sub.add_parser("resume"))
-    sp.add_argument("--expect-question-sha", help="refuse unless the run belongs to this question hash")
-    sp.set_defaults(fn=cmd_resume)
-    with_session(sub.add_parser("cancel")).set_defaults(fn=cmd_cancel)
-    sp = with_session(sub.add_parser("fail"))
-    sp.add_argument("--reason", required=True)
-    sp.set_defaults(fn=cmd_fail)
+    with_session(sub.add_parser("resume")).set_defaults(fn=cmd_resume)
+    sp = with_session(sub.add_parser("close"))
+    sp.add_argument("--status", required=True, choices=["cancelled", "failed"])
+    sp.add_argument("--reason", default="")
+    sp.set_defaults(fn=cmd_close)
     with_session(sub.add_parser("runs")).set_defaults(fn=cmd_runs)
     sp = with_session(sub.add_parser("materials"))
     sp.add_argument("action", choices=["add", "list"])
@@ -536,10 +520,9 @@ def parser():
     with_session(sub.add_parser("finish")).set_defaults(fn=cmd_finish)
 
     sp = sub.add_parser("forecast")
-    sp.add_argument("action", choices=["add", "resolve", "list", "score", "fit", "status", "import", "export"])
+    sp.add_argument("action", choices=["add", "resolve", "list", "score", "fit", "import", "export"])
     sp.add_argument("--id")
     sp.add_argument("--outcome", type=int, choices=[0, 1])
-    sp.add_argument("--event-id", help="idempotency key for add or resolve retries")
     sp.add_argument("--file", help="add: record JSON path or - for stdin (default); import: JSONL path "
                                    "(default <data>/forecasts.jsonl); export: output path or - for stdout")
     sp.set_defaults(fn=cmd_forecast)

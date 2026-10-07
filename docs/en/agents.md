@@ -10,21 +10,14 @@ Participants from different model families make different mistakes, so Colosseum
 | `gemini` | Gemini CLI | `gemini`, prompt on stdin |
 | `kimi` | Kimi Code CLI | `kimi -p <prompt>` |
 | `mcode` | MiniMax Code | `mcode exec <prompt>` |
-| `qwen` | Qwen Code | `qwen`, prompt on stdin |
 | `opencode` | OpenCode | `opencode run <prompt>` |
 | `hermes` | Hermes Agent | `hermes -z <prompt>` |
 | `openclaw` | OpenClaw | `openclaw agent --agent main --message <prompt>`; the gateway must be running |
-| `cursor-agent` | Cursor CLI | `cursor-agent -p --output-format text <prompt>` |
-| `copilot` | GitHub Copilot CLI | `copilot -p <prompt>` |
-| `crush` | Crush | `crush run <prompt>` |
-| `amp` | Amp | `amp -x <prompt>` |
-| `goose` | Goose | `goose run --no-session -i -`, prompt on stdin |
 | `llm` | llm | `llm`, prompt on stdin |
-| `aichat` | aichat | `aichat`, prompt on stdin |
 | `ollama` | Ollama | `ollama run <model>`, prompt on stdin; set the model in your agents file |
 | `claude` | Claude Code CLI | `claude -p` with write tools disallowed |
 
-The commands for `cursor-agent`, `copilot`, `crush`, `amp`, `goose`, `qwen` and `aichat` are marked unverified in the registry. Run a probe (below) before relying on them.
+Other CLIs, such as Qwen Code, Cursor CLI, Copilot CLI, Crush, Amp, Goose or aichat, can be added in your agents file (see below). Check them with a probe before use.
 
 ## Checking what is available
 
@@ -38,17 +31,19 @@ An agent counts as usable only if it is installed and answers the probe. Probe r
 ## How the roster is built
 
 ```bash
-relay.py roster --size 3 --probe --prefer codex,kimi
+relay.py roster --size 3 --probe --host-family claude --prefer codex,kimi
 ```
 
 1. Agents you name come first, in your order (`--prefer`). With `--only`, no other external agent is used.
 2. Remaining seats go to usable agents by priority, one per model family.
-3. At most two seats go to external agents, so one participant on the host's own model remains to search the web during the debate. `--max-cli` changes this.
-4. The Claude Code CLI joins only when you name it, since in Claude Code it is the same family as the built-in participants.
+3. At most two seats go to external agents, so one participant runs on the host's own model. `--max-cli` changes this.
+4. An agent of the host's own family (`--host-family`, `claude` by default; use `google` in a Gemini-based host) joins only when you name it.
 5. An unused agent from a family not in the roster becomes the juror.
 6. Labels A, B, C are assigned in random order.
 
 The output lists the providers that will receive prompts (`transmission`) and warnings in `notes`.
+
+External agents cannot search the web themselves. In each turn an external agent first names up to two search queries; a host participant runs them and the raw results go back to the agent with the prompt. Its quotes are checked like everyone else's.
 
 ## Your agents file
 
@@ -90,7 +85,7 @@ Agents such as OpenCode, Hermes and OpenClaw can run any model. Set their `famil
 ## Privacy and safety
 
 - The question and the debate prompts go to each selected agent's model provider. Colosseum names them before the run. If the question contains source code, internal documents or personal data, it asks before adding external agents.
-- Prompts never pass through a shell. They are sent on stdin, or as a single program argument for agents that need it (no NUL bytes, at most 100,000 bytes).
+- Prompts never pass through a shell. They are sent on stdin, or as a single program argument for agents that need it.
 - Each agent runs in an empty temporary directory, so a coding agent has no project to edit. Codex runs in its read-only sandbox; the Claude CLI runs with write tools disallowed.
 - A timeout kills the agent and its child processes. The prompt file is deleted after the run.
 

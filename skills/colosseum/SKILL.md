@@ -20,7 +20,7 @@ metadata:
 2. 참가자는 기본 3명이다. 가능하면 최소 1명은 Claude가 아닌 모델 계열로 채운다. 전원이 같은 계열이면 결과에 "동종 명단"이라고 표기한다.
 3. 참가자는 익명 라벨(A, B, C)로만 서로를 본다. 모델명, 관점, 확률은 다른 참가자와 배심원에게 공개하지 않는다. 라벨은 라운드마다 다시 섞는다.
 4. 초안은 병렬로, 서로 모르는 상태에서 쓴다. 초안이 모이면 먼저 투표 기준선과 풀링 확률 P0를 계산해 기록한다.
-5. 팩트 클레임에는 URL과 50단어 이하 원문 인용이 붙어야 한다. 인용은 페이지와 대조해 v(연속 구간 일치), n(검토 필요: 근접 일치나 조건절을 뺀 인용), u(미확인)로 분류한다. 부호, 숫자, 부정어, 비교 표현이 다르면 u다. n과 u는 증거로 0점이다. 지지 판정(support)은 주장마다 따로 한다. 환경 문제로 페이지 가져오기가 실패하면 실제 검색 스니펫 텍스트에 인용이 그대로 들어 있을 때만 약한 증거(snippet)로 인정하고, 증거마다 획득 방식을 기록한다.
+5. 팩트 클레임에는 URL과 50단어 이하 원문 인용이 붙어야 한다. 인용은 페이지와 대조해 v(연속 구간 일치), n(검토 필요: 원문 그대로지만 같은 문장의 조건절을 뺀 인용), u(그 밖의 모든 경우)로 분류한다. 부호, 숫자, 부정어, 비교 표현이 하나라도 다르면 u다. n과 u는 증거로 0점이다. 지지 판정(support)은 주장마다 따로 한다. 환경 문제로 페이지 가져오기가 실패하면 실제 검색 스니펫 텍스트에 인용이 그대로 들어 있을 때만 약한 증거(snippet)로 인정하고, 증거마다 획득 방식을 기록한다.
 6. 입장 변경은 근거 자격을 갖춘 증거(v 또는 snippet, support full/partial, superseded 아님), 혹은 이름을 댈 수 있는 논리 오류를 근거로 할 때만 인정한다. 그 밖의 변경은 CONFORMITY_FLIP으로 기록하고 수렴에 세지 않는다.
 7. 토론은 기본 1라운드, 상한 3라운드다. 새 검증 증거로 바뀐 입장이 없는 라운드가 나오면 즉시 끝낸다.
 8. 최종 답이 투표 기준선과 다르려면 세 조건이 모두 필요하다: 소수 핵심 주장의 인용 재확인(v), 다수 반박의 검증 실패, 다른 계열(없으면 새) 배심원의 독립 동의.
@@ -76,7 +76,7 @@ COLOSSEUM_JSON
 ```
 
 - 결과의 `run_id`와 `run_dir`을 기억한다.
-- 이미 실행 중이라는 거부가 나오면, 같은 질문을 이어 가는 경우 `CTL resume --session ... --expect-question-sha <question_sha256>`로 체크포인트부터 재개하고, 새 질문이면 `CTL restart --session ... --question-file -`로 새 실행을 연다. 이전 실행의 파일은 그 실행의 디렉터리에 남고 새 실행에 섞이지 않는다.
+- 이미 실행 중이라는 거부가 나오면, 같은 질문을 이어 가는 경우 `CTL resume --session ...`으로 체크포인트부터 재개하고, 새 질문이면 `CTL restart --session ... --question-file -`로 새 실행을 연다. 이전 실행의 파일은 그 실행의 디렉터리에 남고 새 실행에 섞이지 않는다.
 - 체크포인트 버전이 맞지 않는다는 거부가 나오면 `restart`만 가능하다.
 - 지난 실행의 파일을 다시 볼 때는 `CTL verdict --session ... --run <run_id>`처럼 `--run`을 명시한다.
 
@@ -109,16 +109,17 @@ COLOSSEUM_JSON
 | normative (가치 판단) | `colosseum:debate` | `mode: "normative"` |
 | forecast (미래 사건의 확률) | `colosseum:forecast` (실험) | `kind: "probability"`, `resolution_criteria`, `resolve_by`, `extremize`, `forecast_id` |
 | estimate (수치 추정) | `colosseum:forecast` (실험) | `kind: "estimate"`, `unit` |
-| diagnostic ("X는 왜 일어났나") | `colosseum:diagnose` (실험) | 없음 |
-| creative (아이디어, 이름 짓기) | `colosseum:ideate` (실험) | 선택: `criteria` |
+| diagnostic ("X는 왜 일어났나") | `colosseum:debate` | `mode: "factual"`. 경쟁하는 원인을 주장으로 세워 토론한다 |
 
    확률 예측은 해소 기준과 해소 시점이 명확해야 한다. 질문에서 정할 수 없으면 사용자에게 물어서 정한다. `extremize`는 `CTL forecast fit`의 `a` 값을 쓴다(기록이 부족하면 1.0). `forecast_id`는 `AS_OF`와 질문 요약으로 만든다.
 2. `python3`와 Bash가 있으면 아래 "실행 열기"대로 실행을 연다. 훅의 예산 강제와 출처 기록이 이때부터 작동한다.
 3. 명단을 만든다. 사용자가 에이전트를 지정했으면("codex랑 kimi로", "opencode 써서") 그 id를 순서대로 `--prefer`에 넣고, "그것만 써"라고 했으면 `--only`에 넣는다. 사용자가 외부 에이전트를 쓰지 말라고 했으면 이 단계를 건너뛰고 Claude 참가자 3명으로 간다.
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/scripts/relay.py" --data "${CLAUDE_PLUGIN_DATA}" roster --size 3 --probe --prefer codex,kimi
+python3 "${CLAUDE_SKILL_DIR}/scripts/relay.py" --data "${CLAUDE_PLUGIN_DATA}" roster --size 3 --probe --host-family claude --prefer codex,kimi
 ```
+
+   `--host-family`에는 이 스킬을 돌리는 호스트 모델의 계열을 등록부 표기로 넣는다(Claude면 `claude`, Gemini면 `google`, GPT면 `openai`). 같은 계열의 외부 에이전트는 사용자가 지정할 때만 들어간다.
 
    - 결과의 `roster`를 그대로 워크플로 args에 쓰고, debate에서는 `cli_juror`를 `cli_juror`로 넘긴다.
    - 설치되어 있고 실제로 응답하는(`--probe`) 에이전트만 들어간다. 사용자가 지정한 에이전트가 먼저, 그다음 우선순위 순서로, 모델 계열마다 하나씩 들어간다. 웹 검색을 맡을 Claude 참가자 한 자리는 남긴다(`--max-cli`로 바꿀 수 있다). Claude Code CLI(`claude`)는 사용자가 지정할 때만 들어간다.
@@ -131,9 +132,9 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/relay.py" --data "${CLAUDE_PLUGIN_DATA}" ro
    - debate: 결과의 `graph`를 `CTL verdict --session ... --file -`에 heredoc으로 넘겨 Python 엔진으로 판정을 다시 계산한다. `conflicts[].verdict`가 결과의 `verdict.conflicts`와 다르면 보고서 끝에 "판정 교차 검증 불일치"를 덧붙인다. `material_checks`가 있으면 "자료 인용 재대조" 항목으로 바뀐 인용과 사유를 덧붙이고, 두 판정이 다르면 Python 판정을 따른다.
    - debate의 decision, technical 모드: 결과 전체(`data`, `graph`, `verdict`)를 `CTL adr --session ... --file -`에 heredoc으로 넘겨 결정 기록을 만든다. 실행 디렉터리에 `decision.md`(ADR)와 `decision.json`이 생긴다. 상태는 `proposed`로 두고, 채택, 보류, 추가 실험은 사용자가 정한다(사용자가 정하면 `--status accepted|rejected|deferred|needs-experiment`로 다시 만든다). PR 게시나 외부 공유는 사용자가 따로 요청할 때만 한다.
    - 사용자가 "이 출처를 빼면?", "이 주장이 입증되지 않았다면?"을 물으면 `CTL whatif --session ... --exclude-evidence <E번호>` 또는 `--unprove-claim <주장 ID>`로 모델 호출 없이 다시 계산해, 바뀐 판정과 그대로인 판정, 변화가 전파된 관계를 보여 준다. 한 번에 하나만 바꾼다. 이 결과는 고정된 그래프 위의 의존성 확인이지 현실에 대한 예측이 아니다.
-   - forecast(확률): 결과의 `record`를 `CTL forecast add`에 heredoc으로 넘겨 예측 기록에 남긴다. 해소 시점이 지나면 `CTL forecast resolve --id <id> --outcome 0|1`로 결과를 기록하고, `CTL forecast score`로 Brier 점수와 보정 구간을 본다. 전송이 끊겨 다시 넣을 때는 같은 `--event-id`를 쓴다. `forecast add`가 "has not been imported"로 거부하면 `CTL forecast import`를 먼저 실행한다.
-   - 모든 워크플로: `CTL finish --session ...`로 실행을 닫는다. 워크플로가 실패하면 `CTL fail --session ... --reason "<사유>"`, 사용자가 중단하면 `CTL cancel --session ...`로 닫는다.
-8. 워크플로가 실패하거나 비활성화되어 있으면 스크립트 모드로 처음부터 진행하고, 그 사실을 결과 머리에 적는다. 예측, 진단, 창작 질문도 스크립트 모드에서는 [references/modes.md](references/modes.md)의 절차를 손으로 따른다.
+   - forecast(확률): 결과의 `record`를 `CTL forecast add`에 heredoc으로 넘겨 예측 기록에 남긴다. 해소 시점이 지나면 `CTL forecast resolve --id <id> --outcome 0|1`로 결과를 기록하고, `CTL forecast score`로 Brier 점수와 보정 구간을 본다.
+   - 모든 워크플로: `CTL finish --session ...`로 실행을 닫는다. 워크플로가 실패하면 `CTL close --session ... --status failed --reason "<사유>"`, 사용자가 중단하면 `--status cancelled`로 닫는다.
+8. 워크플로가 실패하거나 비활성화되어 있으면 스크립트 모드로 처음부터 진행하고, 그 사실을 결과 머리에 적는다. 예측 질문도 스크립트 모드에서는 [references/modes.md](references/modes.md)의 절차를 손으로 따른다.
 
 ## 스크립트 모드
 
@@ -169,7 +170,7 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/relay.py" --data "${CLAUDE_PLUGIN_DATA}" ro
 | [references/protocol.md](references/protocol.md) | 구성 요소, 명단, CLI 호출, Prime Directive, Phase 0~4 상세와 프롬프트 |
 | [references/formats.md](references/formats.md) | 참가자 JSON 턴, drafts.json, graph.json 형식과 판정 라벨 |
 | [references/output.md](references/output.md) | 최종 보고서와 진행 중 투명성 출력 형식 |
-| [references/modes.md](references/modes.md) | 예측(델파이), 추정, 진단(ACH-lite), 창작(명목집단법), 결정, 가치 판단 모드의 절차와 근거 |
+| [references/modes.md](references/modes.md) | 예측(델파이), 추정, 결정, 가치 판단 모드의 절차와 근거 |
 
 ## 금지 사항
 

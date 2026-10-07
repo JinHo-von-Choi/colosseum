@@ -19,13 +19,12 @@ the file named by $COLOSSEUM_AGENTS_FILE, can add agents, override fields, disab
 also names preferred agents.
 
 Prompts never pass through a shell. An agent marked "prompt": "stdin" gets the prompt bytes
-on stdin. One marked "prompt": "arg" gets it as one argv element; such prompts may not hold
-NUL bytes or exceed 100,000 bytes, and one that starts with "-" is prefixed with a space so
-it cannot be read as an option. Every agent runs in an empty private working directory, so
+on stdin. One marked "prompt": "arg" gets it as one argv element (the operating system
+refuses NUL bytes and over-long arguments); a prompt that starts with "-" is prefixed with
+a space so it cannot be read as an option. Every agent runs in an empty private working directory, so
 a coding agent has no repository to edit. On timeout or cancellation the agent's whole
 process group is killed. Prints one JSON object; exit code 0 on success, 2 otherwise.
 """
-import hashlib
 import json
 import os
 import random
@@ -45,12 +44,11 @@ REGISTRY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agents.json
 DEFAULT_TIMEOUT = 180
 MAX_TIMEOUT = 600
 DEFAULT_MAX_OUTPUT = 200000
-MAX_ARG_PROMPT = 100000
 PROBE_PROMPT = "Reply with exactly one word: OK"
 PROBE_TTL = 24 * 3600
 PROBE_TIMEOUT = 90
 MARKER = ".colosseum-relay"
-CLAUDE_FAMILY = "claude"
+HOST_FAMILY = "claude"
 
 
 class RelayError(ValueError):
@@ -143,7 +141,7 @@ def build_argv(aid, spec, prompt_text=None):
 
 def describe(aid, spec):
     return {"id": aid, "name": spec.get("name", aid), "provider": spec.get("provider"), "family": spec.get("family", aid),
-            "family_uncertain": bool(spec.get("family_uncertain")), "verified": bool(spec.get("verified")),
+            "family_uncertain": bool(spec.get("family_uncertain")),
             "prompt": spec["prompt"], "disabled": bool(spec.get("disabled")),
             "installed": bool(installed(spec)), "priority": spec.get("priority", 50)}
 
@@ -168,15 +166,7 @@ def cleanup(prompt_file):
 
 
 def _prompt_arg(prompt):
-    if b"\x00" in prompt:
-        raise RelayError("the prompt contains a NUL byte, which cannot be passed as an argument")
-    if len(prompt) > MAX_ARG_PROMPT:
-        raise RelayError("the prompt is %d bytes; agents that take it as an argument accept at most %d"
-                         % (len(prompt), MAX_ARG_PROMPT))
-    try:
-        text = prompt.decode("utf-8")
-    except UnicodeDecodeError:
-        raise RelayError("the prompt is not valid UTF-8")
+    text = prompt.decode("utf-8", errors="replace")
     return " " + text if text.startswith("-") else text
 
 
@@ -251,11 +241,6 @@ def run(cli, prompt_file, timeout=DEFAULT_TIMEOUT, max_output=DEFAULT_MAX_OUTPUT
 
 # ---- detection and probing ----
 
-def _probe_key(aid, spec):
-    raw = json.dumps([installed(spec), spec["argv"], spec.get("vars", {}), spec["prompt"]], sort_keys=True)
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
-
-
 def probe_path(data=None):
     return os.path.join(S.data_root(data), "agents-probe.json")
 
@@ -281,11 +266,8 @@ def detect(data=None, do_probe=False, refresh=False, registry=None):
     cache = {}
     cpath = probe_path(data)
     if do_probe and not refresh and os.path.exists(cpath):
-        try:
-            with open(cpath, encoding="utf-8") as f:
-                cache = json.load(f)
-        except ValueError:
-            cache = {}
+        with open(cpath, encoding="utf-8") as f:
+            cache = json.load(f)
     now = time.time()
     rows = []
     for aid, spec in reg["agents"].items():
@@ -293,13 +275,12 @@ def detect(data=None, do_probe=False, refresh=False, registry=None):
         if not row["installed"] or row["disabled"]:
             continue
         if do_probe:
-            key = _probe_key(aid, spec)
             hit = cache.get(aid)
-            if hit and hit.get("key") == key and now - hit.get("at", 0) < PROBE_TTL:
+            if hit and now - hit["at"] < PROBE_TTL:
                 result = hit["result"]
             else:
                 result = probe(aid, spec, data=data, registry=reg)
-                cache[aid] = {"key": key, "at": now, "result": result}
+                cache[aid] = {"at": now, "result": result}
             row["usable"] = result["usable"]
             row["probe"] = result
         rows.append(row)
@@ -313,14 +294,13 @@ def detect(data=None, do_probe=False, refresh=False, registry=None):
 
 # ---- roster ----
 
-def roster(detected, size=3, prefer=None, only=None, max_cli=None, seed=None):
-    """Pick external agents for a roster of `size` and fill the rest with Claude participants.
+def roster(detected, size=3, prefer=None, only=None, max_cli=None, seed=None, host_family=HOST_FAMILY):
+    """Pick external agents for a roster of `size` and fill the rest with the host's own model.
 
     Agents the user names come first, in the user's order; then installed agents by
-    priority. Only one agent per model family is taken unless the user named more, and
-    the Claude CLI is taken only when named, since the built-in participants are Claude.
-    At least one Claude participant stays unless max_cli says otherwise: it is the one
-    that can search the web during the debate.
+    priority. Only one agent per model family is taken unless the user named more, and an
+    agent of the host's family is taken only when named. At least one host participant
+    stays unless max_cli says otherwise: it is the one that searches the web itself.
     """
     if not 2 <= size <= 5:
         raise RelayError("roster size must be between 2 and 5")
@@ -332,7 +312,7 @@ def roster(detected, size=3, prefer=None, only=None, max_cli=None, seed=None):
     if only:
         pool = [by_id[n] for n in only if n in by_id]
     else:
-        rest = [r for r in rows if r["id"] not in named and r["family"] != CLAUDE_FAMILY]
+        rest = [r for r in rows if r["id"] not in named and r["family"] != host_family]
         pool = [by_id[n] for n in named if n in by_id] + rest
     chosen, families = [], set()
     for r in pool:
@@ -341,15 +321,15 @@ def roster(detected, size=3, prefer=None, only=None, max_cli=None, seed=None):
         explicit = r["id"] in named
         if r["family"] in families and not explicit:
             continue
-        if r["family"] == CLAUDE_FAMILY and not explicit:
+        if r["family"] == host_family and not explicit:
             continue
         chosen.append(r)
         families.add(r["family"])
-    juror = next((r for r in rows if r not in chosen and r["family"] != CLAUDE_FAMILY and r["family"] not in families), None)
+    juror = next((r for r in rows if r not in chosen and r["family"] != host_family and r["family"] not in families), None)
     if juror is None:
-        juror = next((r for r in rows if r not in chosen and r["family"] != CLAUDE_FAMILY), None)
+        juror = next((r for r in rows if r not in chosen and r["family"] != host_family), None)
     seats = [{"family": r["family"], "cli": r["id"], "name": r["name"]} for r in chosen]
-    seats += [{"family": CLAUDE_FAMILY} for _ in range(size - len(seats))]
+    seats += [{"family": host_family} for _ in range(size - len(seats))]
     labels = list(string.ascii_uppercase[:size])
     random.Random(seed).shuffle(labels)
     members = [dict(s, label=l) for s, l in zip(seats, labels)]
@@ -359,8 +339,6 @@ def roster(detected, size=3, prefer=None, only=None, max_cli=None, seed=None):
     for r in chosen + ([juror] if juror else []):
         if r["family_uncertain"]:
             notes.append("%s: the model depends on its own configuration; family %r is a guess. Set \"family\" in the user agents.json" % (r["id"], r["family"]))
-        if not r["verified"]:
-            notes.append("%s: invocation not checked against its documentation; run `relay.py detect --probe` first" % r["id"])
     if unavailable:
         notes.append("not available: %s" % ", ".join(unavailable))
     return {
@@ -391,6 +369,7 @@ def main(argv):
     r.add_argument("--max-cli", type=int)
     r.add_argument("--probe", action="store_true")
     r.add_argument("--seed", type=int)
+    r.add_argument("--host-family", default=HOST_FAMILY, help="model family of the host running the skill (default claude)")
     sub.add_parser("mktemp")
     x = sub.add_parser("run")
     x.add_argument("--cli", required=True)
@@ -417,7 +396,7 @@ def main(argv):
             return emit(out, 0)
         if a.cmd == "roster":
             det = detect(a.data, a.probe)
-            return emit(roster(det, a.size, split(a.prefer), split(a.only), a.max_cli, a.seed), 0)
+            return emit(roster(det, a.size, split(a.prefer), split(a.only), a.max_cli, a.seed, a.host_family), 0)
     except (RelayError, OSError, ValueError) as e:
         return emit({"ok": False, "error": "%s: %s" % (type(e).__name__, e)}, 2)
     out = {"ok": False, "error": "cancelled"}

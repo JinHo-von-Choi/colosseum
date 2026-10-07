@@ -10,8 +10,7 @@ Start the request with a trigger word (`colosseum`, `팩트체크`, `AI 토론`,
 | Decision | "Should we replace polling with a message queue?" | Debate plus the strongest alternative plan and the signals that would favor it |
 | Normative | "Should code review be mandatory for hotfixes?" | Rules on the factual premises; value premises become "if you weigh X over Y, then A" |
 | Forecast, estimate (experimental) | "Will X ship before June 2027?" | Independent estimates, anonymous feedback rounds, pooled forecast |
-| Diagnostic (experimental) | "Why did our p99 latency double last week?" | Competing hypotheses and an evidence matrix |
-| Creative (experimental) | "Name ideas for an internal CLI" | Silent generation, merge, blind ranking |
+| Diagnostic | "Why did our p99 latency double last week?" | Debate between competing causes |
 
 Better questions get better reviews:
 
@@ -74,8 +73,8 @@ Quote check results:
 |------|---------|--------------------|
 | `v` | The quote appears word for word on the page, and no condition in its sentence was cut off | yes |
 | `snippet` | The page could not be fetched; the quote appears word for word in a search snippet | yes, with half weight |
-| `n` | Needs review: a near match, or a verbatim quote that drops an "if", "only", "except" or similar from its sentence | no |
-| `u` | Not found. Changed numbers, signs, negations or comparisons ("more than" to "less than") always give `u` | no |
+| `n` | Needs review: the quote is verbatim but drops an "if", "only", "except" or similar from its sentence | no |
+| `u` | Not found word for word. One changed word is enough, including numbers, signs, negations and comparisons | no |
 
 A quote also needs a support judgment of `full` or `partial` for the claim it backs. The same quote is judged separately for every claim that cites it.
 

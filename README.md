@@ -82,9 +82,9 @@ Tested on Linux. On systems without `fcntl` the scripts refuse to start a run.
 - Claude Code is the tested host. Other hosts run the skill without workflows and hooks, so budgets and blind-draft isolation depend on the host following the skill's instructions.
 
 - Quotes are checked against the text returned by the page fetch tool, which is itself produced by a model. A quote marked verified is strong evidence, not proof.
-- External agents argue from the fact base and the quotes given to them; they do not search the web during the debate. Claude participants do.
+- External agents cannot search the web themselves; they choose search queries and receive the raw results each turn.
 - Each run is capped at 3 rounds, 25 searches and 15 page fetches.
-- `forecast`, `diagnose` and `ideate` modes are experimental.
+- Forecast and estimate questions are experimental. Idea generation is out of scope.
 - Probabilities are not calibrated.
 
 ## Installing as a plain skill
@@ -102,7 +102,7 @@ This links the skill into `~/.claude/skills/colosseum`. For another host, set th
 COLOSSEUM_INSTALL_DEST=<host skills directory>/colosseum ./install.sh
 ```
 
-In this mode there are no hooks, workflows or plugin agents; the skill runs the same procedure through its scripts. `./install.sh --ref <tag>` pins a version. The installer never overwrites a file or link it did not create.
+In this mode there are no hooks, workflows or plugin agents; the skill runs the same procedure through its scripts. Check out a tag before running it to pin a version. The installer never overwrites a file or link it did not create.
 
 ## License
 

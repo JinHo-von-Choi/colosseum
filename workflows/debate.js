@@ -35,11 +35,10 @@ const LIB = (() => {
   const MARGIN = 0.15
   const THETA = 0.5
   const MAX_UNDEC = 16
-  const NEAR = 0.9
   const CLIP = [0.02, 0.98]
 
-  // ---- quote matching (quote_match.py, matcher quote-match/2) ----
-  const MATCHER_VERSION = 'quote-match/2'
+  // ---- quote matching (quote_match.py, matcher quote-match/3) ----
+  const MATCHER_VERSION = 'quote-match/3'
   const CHAR_MAP = {
     '‘': "'", '’': "'", '‚': "'", '‛': "'", '′': "'",
     '“': '"', '”': '"', '„': '"', '‟': '"', '″': '"',
@@ -51,13 +50,6 @@ const LIB = (() => {
   const KEEP_SYMBOLS = new Set('<>=≤≥≠≈$€£¥₩%‰')
   const COMPARE_SYMBOLS = new Set('<>=≤≥≠≈')
   const SENTENCE_END = new Set('!?\n。')
-  const NEGATIONS = new Set(['not', 'no', 'never', 'none', 'nor', 'neither', 'cannot', 'without', 'nobody', 'nothing', 'nowhere',
-    '안', '못', '미', '비', '불', '무'])
-  const NEGATION_PARTS = ['않', '없', '아니', '못하', '불가']
-  const COMPARATORS = new Set(['more', 'less', 'fewer', 'greater', 'over', 'under', 'above', 'below', 'least', 'most',
-    'than', 'exceed', 'exceeds', 'exceeded', 'up', 'down', 'rose', 'fell', 'increase', 'decrease',
-    'increased', 'decreased', 'higher', 'lower', '이상', '이하', '미만',
-    '초과', '이내', '넘게', '이상의', '이하의'])
   const QUALIFIERS = new Set(['if', 'unless', 'when', 'whenever', 'only', 'except', 'excluding', 'provided', 'assuming', 'until',
     '단', '다만', '만약', '경우', '경우에', '경우에는',
     '조건', '한해', '제외하고', '제외하면'])
@@ -122,12 +114,8 @@ const LIB = (() => {
     }
     return [toks, ends]
   }
-  const isNegation = (t) => NEGATIONS.has(t) || t.endsWith("n't") || NEGATION_PARTS.some((p) => t.includes(p))
-  const isComparator = (t) => COMPARATORS.has(t) || COMPARE_SYMBOLS.has(t)
   const isQualifier = (t) => QUALIFIERS.has(t) || (Array.from(t).length >= 2 && t.charCodeAt(0) >= 128 && QUALIFIER_SUFFIXES.some((s) => t.endsWith(s)))
-  const hasDigit = (t) => Array.from(t).some(isDigit)
   const cmpStr = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
-  const guarded = (tokens) => [...new Set(tokens.filter((t) => hasDigit(t) || isNegation(t) || isComparator(t)))].sort(cmpStr)
   function findRun(q, p) {
     for (let s = 0; s + q.length <= p.length; s++) {
       let k = 0
@@ -135,31 +123,6 @@ const LIB = (() => {
       if (k === q.length) return s
     }
     return -1
-  }
-  function lcs(a, b) {
-    let prev = new Array(b.length + 1).fill(0)
-    for (const x of a) {
-      const cur = [0]
-      for (let j = 0; j < b.length; j++) cur.push(x === b[j] ? prev[j] + 1 : Math.max(prev[j + 1], cur[j]))
-      prev = cur
-    }
-    return prev[b.length]
-  }
-  function bestWindow(q, p) {
-    if (!q.length || !p.length) return [0, 0, 0]
-    const qset = new Set(q), size = q.length + 3
-    let best = 0, bs = 0, be = 0
-    const last = Math.max(1, p.length - q.length + 1)
-    for (let start = 0; start < last; start++) {
-      const seg = p.slice(start, start + size)
-      if (q.length >= 3 && seg.filter((t) => qset.has(t)).length < NEAR * q.length) continue
-      const ratio = lcs(q, seg) / q.length
-      if (ratio > best) {
-        best = ratio; bs = start; be = start + seg.length
-        if (best === 1) break
-      }
-    }
-    return [best, bs, be]
   }
   function matchQuote(quote, page) {
     const [q] = tokenize(normalize(quote))
@@ -178,18 +141,7 @@ const LIB = (() => {
       if (dropped.length) return Object.assign(out, { status: 'n', kind: 'qualifier_omitted', reason: 'quote leaves out part of its sentence that carries a condition or scope: ' + dropped.join(', ') })
       return Object.assign(out, { status: 'v', reason: 'exact' })
     }
-    const [ratio, ws, we] = bestWindow(q, p)
-    const score = Math.round(ratio * 1000) / 1000
-    out.score = score
-    if (score < NEAR) return Object.assign(out, { status: 'u', reason: 'not found on the page' })
-    const qset = new Set(q)
-    let window = p.slice(ws, we)
-    while (window.length && !qset.has(window[0])) window = window.slice(1)
-    while (window.length && !qset.has(window[window.length - 1])) window = window.slice(0, -1)
-    const gq = guarded(q), gw = guarded(window)
-    if (JSON.stringify(gq.filter(hasDigit)) !== JSON.stringify(gw.filter(hasDigit))) return Object.assign(out, { status: 'u', reason: 'numbers or signs differ from the page' })
-    if (JSON.stringify(gq) !== JSON.stringify(gw)) return Object.assign(out, { status: 'u', reason: 'negation or comparison differs from the page' })
-    return Object.assign(out, { status: 'n', kind: 'near', span: [ws, we], reason: 'near match; review required' })
+    return Object.assign(out, { status: 'u', score: 0, reason: 'not found on the page' })
   }
 
   // ---- baseline (baseline.py) ----
@@ -447,20 +399,6 @@ const LIB = (() => {
   }
 
   // ---- mode aggregation (modes.py) ----
-  function borda(ballots) {
-    const k = ballots.reduce((m, b) => Math.max(m, b.length), 0)
-    const points = {}, voters = {}
-    for (const ballot of ballots) {
-      const seen = new Set()
-      ballot.forEach((idea, rank) => {
-        if (seen.has(idea)) return
-        seen.add(idea)
-        points[idea] = (points[idea] || 0) + (k - rank)
-        voters[idea] = (voters[idea] || 0) + 1
-      })
-    }
-    return Object.keys(points).sort((a, b) => points[b] - points[a] || voters[b] - voters[a] || (a < b ? -1 : a > b ? 1 : 0)).map((id) => ({ id, points: points[id], voters: voters[id] }))
-  }
   function median(xs) {
     const s = [...xs].sort((a, b) => a - b), n = s.length
     if (!n) return null
@@ -480,49 +418,7 @@ const LIB = (() => {
     for (const e of estimates) (byFam[e.family] = byFam[e.family] || []).push(Number(e.value))
     return median(Object.values(byFam).map(median))
   }
-  const ACH_WEIGHT = { v: 1.0, n: 0.0, snippet: 0.5, u: 0.0 }
-  function ach(hypotheses, rows) {
-    const kept = [], dropped = []
-    for (const r of rows) {
-      const ratings = hypotheses.map((h) => r.ratings[h] || 'N')
-      ;(new Set(ratings).size === 1 ? dropped : kept).push(r)
-    }
-    const inconsistency = {}, weak = {}
-    for (const h of hypotheses) {
-      let s = 0, w = 0
-      for (const r of kept) {
-        if (r.ratings[h] === 'I') {
-          s += ACH_WEIGHT[r.quote_status] * RELIABILITY[r.reliability]
-          if (r.quote_status === 'snippet' || r.quote_status === 'n' || r.quote_status === 'u' || r.reliability === 'low') w++
-        }
-      }
-      inconsistency[h] = Math.round(s * 1000) / 1000
-      weak[h] = w
-    }
-    const order = [...hypotheses].sort((a, b) => inconsistency[a] - inconsistency[b] || (a < b ? -1 : 1))
-    return { diagnostic: kept.map((r) => r.id), dropped: dropped.map((r) => r.id), inconsistency, weak_inconsistencies: weak, least_inconsistent: order }
-  }
-  function coherent(dist, hypotheses) {
-    const raw = Object.fromEntries(hypotheses.map((h) => [h, Math.max(0.01, Number(dist[h] || 0))]))
-    const total = hypotheses.reduce((t, h) => t + raw[h], 0)
-    return Object.fromEntries(hypotheses.map((h) => [h, raw[h] / total]))
-  }
-  function logLinearPool(entries, hypotheses) {
-    const famSize = {}
-    for (const e of entries) famSize[e.family] = (famSize[e.family] || 0) + 1
-    const logs = Object.fromEntries(hypotheses.map((h) => [h, 0]))
-    let total = 0
-    for (const e of entries) {
-      const w = 1 / famSize[e.family], d = coherent(e.dist, hypotheses)
-      for (const h of hypotheses) logs[h] += w * Math.log(d[h])
-      total += w
-    }
-    const raw = Object.fromEntries(hypotheses.map((h) => [h, Math.exp(logs[h] / total)]))
-    const z = hypotheses.reduce((t, h) => t + raw[h], 0)
-    return Object.fromEntries(hypotheses.map((h) => [h, Math.round((raw[h] / z) * 1000) / 1000]))
-  }
-
-  return { MATCHER_VERSION, POLICY_VERSION, GRAPH_SCHEMA, normalize, tokenize, matchQuote, normalizeUrl, eligible, baseline, pooledProbability, verdict, checklist, baseScore, originOf, borda, delphiFeedback, limitMove, familyMedian, ach, coherent, logLinearPool }
+  return { MATCHER_VERSION, POLICY_VERSION, GRAPH_SCHEMA, normalize, tokenize, matchQuote, normalizeUrl, eligible, baseline, pooledProbability, verdict, checklist, baseScore, originOf, delphiFeedback, limitMove, familyMedian }
 })()
 // ==== colosseum-lib end ====
 
@@ -575,15 +471,26 @@ const S_CLAIMS = { type: 'array', items: S_CLAIM, maxItems: 4 }
 const S_FACTS = { type: 'object', properties: { facts: { type: 'array', items: { type: 'object', properties: { claim: { type: 'string' }, url: { type: 'string' }, quote: { type: 'string' }, publisher: { type: 'string' } }, required: ['claim', 'url', 'quote'] } } }, required: ['facts'] }
 const S_PREMORTEM = { type: 'object', properties: { causes: { type: 'array', items: { type: 'object', properties: { cause: { type: 'string' }, check: { type: 'string' } }, required: ['cause', 'check'] }, maxItems: 3 }, underconfidence: { type: 'string' }, claims: S_CLAIMS }, required: ['causes', 'underconfidence', 'claims'] }
 
-// One participant turn. Claude participants run as colosseum:participant; CLI participants
-// run through colosseum:cli-proxy, which passes the prompt to the CLI and returns its JSON.
+// One participant turn. Host participants run as colosseum:participant and search the web
+// themselves. An external agent cannot, so it first names up to two search queries, a
+// participant runs them, and the raw results go back to the agent with the prompt.
+const S_QUERIES = { type: 'object', properties: { queries: { type: 'array', items: { type: 'string' }, maxItems: 2 } }, required: ['queries'] }
+const S_RESULTS = { type: 'object', properties: { results: { type: 'array', maxItems: 6, items: { type: 'object', properties: { title: { type: 'string' }, url: { type: 'string' }, snippet: { type: 'string' } }, required: ['url', 'snippet'] } } }, required: ['results'] }
+
 async function turn(p, role, body, schema, phaseName) {
   const prompt = PRIME + '\n\n당신의 익명 라벨: ' + p.label + ' | 역할: ' + role + '\n\n' + body
-  if (p.cli) {
-    const fields = Object.keys(schema.properties).join(', ')
-    return agent('CLI: ' + p.cli + (A.relay ? '\nRELAY: ' + A.relay : '') + '\n\n아래 프롬프트 끝에 "JSON 객체 하나로만 답하라. 필드: ' + fields + '"를 덧붙여 이 CLI에 전달하고, CLI가 돌려준 JSON을 스키마에 맞춰 반환하라. CLI는 검색할 수 없으므로 참고 자료 안의 URL과 인용만 쓸 수 있다.\n\n----- PROMPT -----\n' + prompt, { agentType: 'colosseum:cli-proxy', schema, phase: phaseName, label: p.label + ':' + role })
+  const label = p.label + ':' + role
+  if (!p.cli) return agent(prompt, { agentType: 'colosseum:participant', schema, phase: phaseName, label })
+  const head = 'CLI: ' + p.cli + (A.relay ? '\nRELAY: ' + A.relay : '') + '\n\n'
+  const q = await agent(head + '아래 프롬프트 끝에 "이 과제에 답하기 전에 웹에서 확인할 검색어를 최대 2개 정하라. JSON {\"queries\": [...]} 하나로만 답하라."를 덧붙여 이 CLI에 전달하고, CLI가 돌려준 검색어를 반환하라.\n\n----- PROMPT -----\n' + prompt, { agentType: 'colosseum:cli-proxy', schema: S_QUERIES, phase: phaseName, label: label + ':queries' })
+  const queries = ((q && q.queries) || []).filter(Boolean).slice(0, 2)
+  let found = ''
+  if (queries.length) {
+    const r = await agent('WebSearch로 다음 검색어를 각각 검색하라: ' + queries.map((x) => '"' + x + '"').join(', ') + '\n검색어마다 상위 결과 3개의 제목, URL, 검색 엔진 스니펫을 고치지 말고 그대로 반환하라.', { agentType: 'colosseum:participant', schema: S_RESULTS, phase: phaseName, label: label + ':search', effort: 'low' })
+    found = ((r && r.results) || []).map((x) => '- ' + (x.title || '') + ' | ' + x.url + ' | "' + x.snippet + '"').join('\n')
   }
-  return agent(prompt, { agentType: 'colosseum:participant', schema, phase: phaseName, label: p.label + ':' + role })
+  const fields = Object.keys(schema.properties).join(', ')
+  return agent(head + '아래 프롬프트 끝에 "JSON 객체 하나로만 답하라. 필드: ' + fields + '"를 덧붙여 이 CLI에 전달하고, CLI가 돌려준 JSON을 스키마에 맞춰 반환하라. CLI는 참고 자료와 검색 결과 안의 URL과 인용만 쓸 수 있다.\n\n----- PROMPT -----\n' + prompt + (found ? '\n\n[검색 결과] 당신이 정한 검색어의 결과다. 인용은 이 스니펫이나 참고 자료에 있는 문장만 쓴다.\n' + found : ''), { agentType: 'colosseum:cli-proxy', schema, phase: phaseName, label })
 }
 
 // ---- user materials ----
@@ -614,16 +521,12 @@ async function readMaterials(question) {
 }
 
 // ---- evidence: page acquisition, quote checks and support assessments ----
-// One evidence record binds one quote to one claim. Three caches keep their own keys:
-//   acquisitions : normalized URL + quote -> page passage or snippet, source fields (fetched once)
-//   quote checks : content hash + quote + matcher version (pure, recomputed from the cached text)
-//   assessments  : claim id + claim text hash + quote key + context hash + policy version -> support
-// A new claim citing an already fetched quote reuses the acquisition but gets its own
-// support assessment, so a judgment made for one claim never leaks to another.
+// One evidence record binds one quote to one claim. A page is fetched once per URL and
+// quote; a new claim citing it reuses the fetch but gets its own support judgment, so a
+// judgment made for one claim never leaks to another.
 const evidence = []
 const evidenceByKey = {}
 const acquisitions = {}
-const assessments = {}
 const failedHosts = new Set()
 let fetchesUsed = 0
 let degraded = false
@@ -708,15 +611,10 @@ function acquire(url, quote, claimText, phaseName) {
   return acquisitions[key]
 }
 
-async function assess(aKey, acq, claimHash, quote, claimText, phaseName) {
-  if (!assessments[aKey]) {
-    assessments[aKey] = (async () => {
-      if (acq.assessed && acq.assessed.claimHash === claimHash) return { support: acq.assessed.support, support_reason: acq.assessed.support_reason }
-      const r = await agent(SUPPORT_RUBRIC + '\n\n주장: ' + claimText + '\n인용: ' + quote + '\n인용의 문맥(원문): ' + acq.text, { schema: S_SUPPORT, phase: phaseName, label: 'support:' + textHash(aKey).slice(0, 6), effort: 'low' })
-      return r ? { support: r.support, support_reason: r.support_reason || '' } : { support: 'unknown', support_reason: 'no assessment returned' }
-    })()
-  }
-  return assessments[aKey]
+async function assess(acq, claimHash, quote, claimText, phaseName) {
+  if (acq.assessed && acq.assessed.claimHash === claimHash) return { support: acq.assessed.support, support_reason: acq.assessed.support_reason }
+  const r = await agent(SUPPORT_RUBRIC + '\n\n주장: ' + claimText + '\n인용: ' + quote + '\n인용의 문맥(원문): ' + acq.text, { schema: S_SUPPORT, phase: phaseName, label: 'support:' + claimHash.slice(0, 6), effort: 'low' })
+  return r ? { support: r.support, support_reason: r.support_reason || '' } : { support: 'unknown', support_reason: 'no assessment returned' }
 }
 
 // claimId is the graph claim id when the caller has one; the claim text hash is always
@@ -740,8 +638,7 @@ async function checkEvidence(url, quote, claimText, phaseName, claimId) {
   if (acq.acquisition === 'material') e.material = String(url).slice(9)
   e.quote_status = acq.acquisition === 'snippet' ? (m.status === 'v' ? 'snippet' : m.status === 'n' ? 'n' : 'u') : m.status
   if (e.quote_status === 'u') return e
-  e.assessment_key = [claimId || '', claimHash, e.quote_key, e.match.content_hash, LIB.POLICY_VERSION].join('|')
-  const a = await assess(e.assessment_key, acq, claimHash, quote, claimText, phaseName)
+  const a = await assess(acq, claimHash, quote, claimText, phaseName)
   e.support = a.support
   e.support_reason = a.support_reason
   return e
@@ -955,7 +852,7 @@ if (debate) {
 phase('Verdict')
 const doc = {
   schema: LIB.GRAPH_SCHEMA, run_id: RUN_ID, policy: LIB.POLICY_VERSION, matcher: LIB.MATCHER_VERSION,
-  evidence: evidence.map((e) => ({ id: e.id, url: e.url, quote: e.quote, reliability: e.reliability, quote_status: e.quote_status, support: e.support, support_reason: e.support_reason, freshness: e.freshness, origin: e.origin, acquisition: e.acquisition, claim_id: e.claim_id, match: e.match, assessment_key: e.assessment_key })),
+  evidence: evidence.map((e) => ({ id: e.id, url: e.url, quote: e.quote, reliability: e.reliability, quote_status: e.quote_status, support: e.support, support_reason: e.support_reason, freshness: e.freshness, origin: e.origin, acquisition: e.acquisition, claim_id: e.claim_id, match: e.match })),
   claims: graphClaims.map((c) => ({ id: c.id, author: c.author, text: c.text, kind: c.kind, evidence: c.evidence, status: c.status, round: c.round, issue: c.issue, role: c.role, participant: c.participant, ordinal: c.ordinal })),
   relations,
   conflicts: issues.map((i) => ({ a: i.a, b: i.b })),

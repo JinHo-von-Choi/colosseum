@@ -81,12 +81,12 @@ class AgentRelay(unittest.TestCase):
         self.assertEqual(rows[0]["listing"], [], "the agent must start in an empty directory")
         self.assertNotEqual(rows[0]["cwd"], ROOT)
 
-    def test_arg_mode_refuses_nul_and_oversized_prompts(self):
+    def test_arg_mode_fails_cleanly_on_prompts_the_os_refuses(self):
         self.fake("kimi")
-        code, out = self.send("kimi", b"a\x00b")
-        self.assertIn("NUL", out["error"])
-        code, out = self.send("kimi", "x" * (R.MAX_ARG_PROMPT + 1))
-        self.assertIn("at most", out["error"])
+        for prompt in (b"a\x00b", b"x" * 300000):
+            code, out = self.send("kimi", prompt)
+            self.assertEqual(code, 2)
+            self.assertFalse(out["ok"])
         self.assertFalse(os.path.exists(self.capture))
 
     def test_stdin_agents_and_templates(self):
@@ -159,7 +159,7 @@ class AgentRelay(unittest.TestCase):
 
 
 def row(aid, family, priority=10, **kw):
-    r = {"id": aid, "name": aid, "provider": aid, "family": family, "family_uncertain": False, "verified": True,
+    r = {"id": aid, "name": aid, "provider": aid, "family": family, "family_uncertain": False,
          "prompt": "stdin", "disabled": False, "installed": True, "priority": priority}
     r.update(kw)
     return r
@@ -202,6 +202,13 @@ class Roster(unittest.TestCase):
         self.assertIsNone(empty["cli_juror"])
         with self.assertRaises(R.RelayError):
             R.roster(DETECTED, size=1)
+
+    def test_host_family_replaces_claude(self):
+        out = R.roster(DETECTED, seed=0, host_family="google")
+        clis = sorted(m.get("cli") for m in out["roster"] if m.get("cli"))
+        self.assertEqual(clis, ["codex", "qwen"])
+        self.assertEqual([m["family"] for m in out["roster"] if not m.get("cli")], ["google"])
+        self.assertIn("gemini", [m.get("cli") for m in R.roster(DETECTED, prefer=["gemini"], host_family="google")["roster"]])
 
     def test_label_order_follows_the_seed(self):
         a = R.roster(DETECTED, seed=3)["roster"]

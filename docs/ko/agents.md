@@ -10,21 +10,14 @@
 | `gemini` | Gemini CLI | `gemini`, 프롬프트는 표준입력 |
 | `kimi` | Kimi Code CLI | `kimi -p <프롬프트>` |
 | `mcode` | MiniMax Code | `mcode exec <프롬프트>` |
-| `qwen` | Qwen Code | `qwen`, 프롬프트는 표준입력 |
 | `opencode` | OpenCode | `opencode run <프롬프트>` |
 | `hermes` | Hermes Agent | `hermes -z <프롬프트>` |
 | `openclaw` | OpenClaw | `openclaw agent --agent main --message <프롬프트>`. 게이트웨이가 켜져 있어야 한다 |
-| `cursor-agent` | Cursor CLI | `cursor-agent -p --output-format text <프롬프트>` |
-| `copilot` | GitHub Copilot CLI | `copilot -p <프롬프트>` |
-| `crush` | Crush | `crush run <프롬프트>` |
-| `amp` | Amp | `amp -x <프롬프트>` |
-| `goose` | Goose | `goose run --no-session -i -`, 프롬프트는 표준입력 |
 | `llm` | llm | `llm`, 프롬프트는 표준입력 |
-| `aichat` | aichat | `aichat`, 프롬프트는 표준입력 |
 | `ollama` | Ollama | `ollama run <모델>`, 프롬프트는 표준입력. 모델 이름은 에이전트 설정 파일에 적는다 |
 | `claude` | Claude Code CLI | `claude -p`, 쓰기 도구 차단 |
 
-`cursor-agent`, `copilot`, `crush`, `amp`, `goose`, `qwen`, `aichat`은 등록부에 미검증으로 표시되어 있다. 쓰기 전에 아래 확인(probe)을 돌린다.
+Qwen Code, Cursor CLI, Copilot CLI, Crush, Amp, Goose, aichat 같은 다른 CLI는 아래 에이전트 설정 파일로 추가한다. 쓰기 전에 확인(probe)을 돌린다.
 
 ## 사용 가능한 에이전트 확인
 
@@ -38,17 +31,19 @@ relay.py detect --probe    # 각 에이전트에 한 단어 시험 프롬프트�
 ## 명단 구성 규칙
 
 ```bash
-relay.py roster --size 3 --probe --prefer codex,kimi
+relay.py roster --size 3 --probe --host-family claude --prefer codex,kimi
 ```
 
 1. 사용자가 지정한 에이전트(`--prefer`)를 지정한 순서대로 먼저 넣는다. `--only`를 쓰면 다른 외부 에이전트는 넣지 않는다.
 2. 남은 자리는 사용 가능한 에이전트를 우선순위 순서로 채우되, 모델 계열마다 하나만 넣는다.
-3. 외부 에이전트는 최대 2자리다. 토론 중에 웹 검색을 맡을 호스트 기본 모델 참가자 한 자리를 남긴다. `--max-cli`로 바꿀 수 있다.
-4. Claude Code CLI는 Claude Code 안에서 기본 참가자와 같은 계열이므로 사용자가 지정할 때만 넣는다.
+3. 외부 에이전트는 최대 2자리다. 한 자리는 호스트 기본 모델 참가자에게 남긴다. `--max-cli`로 바꿀 수 있다.
+4. 호스트와 같은 계열의 에이전트(`--host-family`, 기본값 `claude`. Gemini 기반 호스트면 `google`)는 사용자가 지정할 때만 넣는다.
 5. 명단에 들지 않은 에이전트 중 명단에 없는 계열의 것을 배심원으로 세운다.
 6. 라벨 A, B, C는 무작위 순서로 붙인다.
 
 결과의 `transmission`에는 프롬프트를 받게 될 제공자가, `notes`에는 주의 사항이 나온다.
+
+외부 에이전트는 직접 웹 검색을 하지 못한다. 그래서 차례마다 외부 에이전트가 먼저 검색어를 최대 2개 정하고, 호스트 참가자가 검색해 결과 원문을 프롬프트와 함께 돌려준다. 외부 에이전트의 인용도 다른 참가자와 똑같이 대조한다.
 
 ## 에이전트 설정 파일
 
@@ -90,7 +85,7 @@ OpenCode, Hermes, OpenClaw처럼 어떤 모델이든 붙일 수 있는 에이전
 ## 데이터 전송과 안전
 
 - 질문과 토론 프롬프트는 선택된 에이전트의 모델 제공자에게 전송된다. 실행 전에 제공자를 알려 주고, 질문에 소스 코드, 내부 문서, 개인정보가 있으면 외부 에이전트를 넣기 전에 사용자에게 묻는다.
-- 프롬프트는 셸을 거치지 않는다. 표준입력으로 보내거나, 필요한 에이전트에는 실행 인자 하나로 보낸다(NUL 바이트 불가, 최대 100,000바이트).
+- 프롬프트는 셸을 거치지 않는다. 표준입력으로 보내거나, 필요한 에이전트에는 실행 인자 하나로 보낸다.
 - 에이전트는 빈 임시 디렉터리에서 실행되므로 코딩 에이전트라도 고칠 프로젝트가 없다. Codex는 읽기 전용 샌드박스로, Claude CLI는 쓰기 도구를 막고 실행한다.
 - 시간이 초과되면 에이전트와 그 자식 프로세스를 모두 종료한다. 프롬프트 파일은 실행 뒤 지운다.
 

@@ -149,11 +149,14 @@ def record(result, status="proposed", theta=None):
     final_pos = data.get("final_position")
 
     final = sorted(doc.get("final", []), key=lambda f: (-f.get("weight", 1), -v["strength"].get(f["claim"], 0), f["claim"]))
-    decisive = []
+    # Copies of one source count once, here as in the scores.
+    decisive, used = [], set()
     for f in final:
         c = claims[f["claim"]]
-        good = [_evidence_view(ev[e]) for e in c.get("evidence", []) if G.eligible(ev[e])]
+        fresh = [ev[e] for e in c.get("evidence", []) if G.eligible(ev[e]) and G.origin_of(ev[e]) not in used]
+        good = [_evidence_view(e) for e in fresh]
         if good and v["status"].get(c["id"]) in ("ACCEPTED", "IN_UNPROVEN"):
+            used.update(G.origin_of(e) for e in fresh)
             decisive.append({"claim": c["id"], "text": c.get("text"), "status": v["status"][c["id"]],
                              "strength": v["strength"][c["id"]], "evidence": good})
         if len(decisive) == 3:

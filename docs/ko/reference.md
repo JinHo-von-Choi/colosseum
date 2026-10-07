@@ -11,9 +11,9 @@
 | 명령 | 용도 |
 |------|------|
 | `start --session S [--question-file -] [--stakes low\|medium\|high] [--max-rounds 1-3] [--search-budget N] [--fetch-budget N]` | 실행을 연다. 같은 세션에 열린 실행이 있으면 거부한다. 질문은 표준입력으로 `{"question": "..."}` 형태로 넘긴다 |
-| `resume --session S [--expect-question-sha H]` | 열려 있거나 중단된 실행을 마지막 단계부터 이어 간다 |
+| `resume --session S` | 열려 있거나 중단된 실행을 마지막 단계부터 이어 간다 |
 | `restart --session S [--question-file -]` | 현재 실행을 중단 상태로 닫고 새 실행을 연다 |
-| `cancel --session S`, `fail --session S --reason TEXT`, `finish --session S` | 실행을 취소, 실패, 완료로 닫는다 |
+| `close --session S --status cancelled\|failed [--reason TEXT]`, `finish --session S` | 실행을 취소나 실패로, 또는 완료로 닫는다 |
 | `runs --session S` | 세션의 실행 목록 |
 | `materials add --session S [--file -]` | 자료를 실행에 고정한다. 입력: `{"materials": [{"path": ...} \| {"url": ...} \| {"text": ..., "title": ...}]}`. 출력의 `workflow_arg`를 워크플로의 `materials` 인자로 넘긴다 |
 | `materials list --session S` | 실행의 자료 목록 |
@@ -39,10 +39,10 @@
 
 | 명령 | 용도 |
 |------|------|
-| `forecast add [--file PATH] [--event-id K]` | 예측 기록 저장(기본은 표준입력 JSON). 같은 기록을 다시 넣으면 아무 일도 없다 |
+| `forecast add [--file PATH]` | 예측 기록 저장(기본은 표준입력 JSON). 같은 기록을 다시 넣으면 아무 일도 없다 |
 | `forecast resolve --id ID --outcome 0\|1` | 결과 기록. 같은 결과를 다시 넣으면 아무 일도 없고, 다른 결과면 오류다 |
-| `forecast list`, `forecast score`, `forecast fit`, `forecast status` | 목록, 채점(Brier, 로그 손실, 구간), 풀링 계수 맞추기, 저장소 상태 |
-| `forecast import [--file PATH]` | `forecasts.jsonl`을 한 번 가져온다. 원본은 백업한다 |
+| `forecast list`, `forecast score`, `forecast fit` | 목록, 채점(Brier, 로그 손실, 구간), 풀링 계수 맞추기 |
+| `forecast import [--file PATH]` | `forecasts.jsonl`의 기록을 넣는다. 이미 있는 기록은 건너뛴다 |
 | `forecast export [--file PATH]` | 모든 기록을 JSON 줄로 내보낸다 |
 
 ## relay.py
@@ -51,7 +51,7 @@
 |------|------|
 | `list` | 등록부의 모든 에이전트와 설치 여부 |
 | `detect [--probe] [--refresh] [--brief]` | 설치된 에이전트를 선호 순서대로. `--probe`는 실제로 답하는지 확인한다 |
-| `roster [--size 3] [--prefer a,b] [--only a,b] [--max-cli N] [--probe] [--seed N]` | 실행에 쓸 명단 |
+| `roster [--size 3] [--prefer a,b] [--only a,b] [--max-cli N] [--host-family F] [--probe] [--seed N]` | 실행에 쓸 명단 |
 | `mktemp` | 프롬프트 파일을 둘 전용 디렉터리 |
 | `run --cli ID --prompt-file PATH [--timeout 180] [--max-output 200000] [--cleanup]` | 에이전트 하나에 프롬프트 하나를 보낸다 |
 
@@ -62,7 +62,6 @@
 | `COLOSSEUM_DATA` | 데이터 디렉터리 |
 | `COLOSSEUM_AGENTS` | 선호 에이전트, 쉼표로 구분 |
 | `COLOSSEUM_AGENTS_FILE` | 에이전트 설정 파일 경로 |
-| `COLOSSEUM_DEBUG_LOG=1` | 출처 기록에 가린 질의와 응답 원문을 남긴다 |
 
 ## 데이터 디렉터리
 

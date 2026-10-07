@@ -30,14 +30,7 @@ class MaterialError(ValueError):
 
 
 def _is_text(raw):
-    if b"\x00" in raw[:8192]:
-        return False
-    try:
-        raw[:8192].decode("utf-8")
-    except UnicodeDecodeError as e:
-        # A multi-byte character cut at the 8192-byte boundary is still text.
-        return e.start >= 8188
-    return True
+    return b"\x00" not in raw[:8192]
 
 
 def _expand(spec):

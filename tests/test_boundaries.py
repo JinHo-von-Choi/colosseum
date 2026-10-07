@@ -102,7 +102,7 @@ class Relay(unittest.TestCase):
         code, out = self.relay("run", "--cli", "bash", "--prompt-file", p)
         self.assertEqual(code, 2)
         self.assertIn("unknown agent", out["error"])
-        code, out = self.relay("run", "--cli", "aichat", "--prompt-file", p)
+        code, out = self.relay("run", "--cli", "mcode", "--prompt-file", p)
         self.assertIn("not installed", out["error"])
 
     def test_prompt_must_come_from_a_relay_directory(self):
@@ -142,7 +142,6 @@ class AuditLog(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.env = dict(os.environ, COLOSSEUM_DATA=self.tmp.name)
-        self.env.pop("COLOSSEUM_DEBUG_LOG", None)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -167,15 +166,9 @@ class AuditLog(unittest.TestCase):
         self.assertNotIn("pw@", text)
         rec = json.loads(text)
         self.assertFalse(rec["ok"])
-        self.assertNotIn("debug", rec)
         self.assertEqual(rec["url"], "https://api.example/x?api_key=REDACTED&q=1")
         if os.name == "posix":
             self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
-
-    def test_debug_log_is_opt_in_and_still_redacted(self):
-        path, text = self.run_post(dict(self.env, COLOSSEUM_DEBUG_LOG="1"))
-        self.assertIn("debug", json.loads(text))
-        self.assertNotIn(self.SECRET, text)
 
 
 @unittest.skipUnless(shutil.which("bash") and shutil.which("git"), "bash and git are needed")

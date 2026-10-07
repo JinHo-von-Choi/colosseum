@@ -7,7 +7,8 @@
 | `skills/colosseum/SKILL.md` | The skill: rules, routing, commands per phase |
 | `skills/colosseum/references/` | Protocol, prompts, formats and report layout the skill loads while it runs |
 | `skills/colosseum/scripts/` | Run controller, verdict engine, quote matcher, forecast store, agent relay and registry (Python standard library only) |
-| `workflows/` | `debate.js`, `forecast.js`, `diagnose.js`, `ideate.js` for the Workflow tool |
+| `workflows/` | `debate.js` and `forecast.js` for the Workflow tool |
+| `experimental/` | Unmaintained workflows, not loaded by the plugin |
 | `agents/` | `participant` (web tools only) and `cli-proxy` (runs external agents) |
 | `hooks/hooks.json` | Budget, messaging and turn-format hooks |
 | `tests/` | Unit, parity, boundary and workflow tests |
@@ -20,6 +21,15 @@ python3 tools/sync_workflow_blocks.py
 ```
 
 A test fails if the copies differ.
+
+## When to add defensive code
+
+Add a check, fallback or guard only when one of these holds:
+
+- a test reproduces the failure it prevents, or
+- it sits on a named trust boundary: user input, external agent output, web content, the file system, the shell.
+
+Validate once at that boundary and trust the data inside. Do not guard states that an earlier step already rules out. Experimental features get the smallest version that works. Heuristic word lists grow only with real failing examples. Tests check what users see, not internal structure.
 
 ## Tests
 
